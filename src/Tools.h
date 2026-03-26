@@ -1,5 +1,5 @@
-#ifndef LightFHEML_TOOLS_H
-#define LightFHEML_TOOLS_H
+#ifndef TOOLS_H
+#define TOOLS_H
 
 #include <iostream>
 #include <map>
@@ -63,6 +63,19 @@ namespace tools {
         {7,"horse"},
         {8,"ship"},
         {9,"truck"}
+    };
+
+    static map<int,int> relu_depth ={//切比雪夫近似，在[-1,1]区间上可以减少一个深度
+        {5,3},
+        {13,4},
+        {27,5},
+        {59,6},
+        {119,7},
+        {200,8},
+        {247,8},
+        {495,9},
+        {1007,10},
+        {2031,11}
     };
 
     static inline void write_to_file(string filename, string content) {
