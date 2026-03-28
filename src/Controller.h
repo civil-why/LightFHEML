@@ -46,8 +46,8 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
                                                         bool serialize,
                                                         const string& filename);
         
-        void generateBootstrappingKeys();
-        void generateRotationKeys();
+        void generateBootstrappingKeys(int bootstrap_slots);
+        void generateRotationKeys(const vector<int>& rotations, bool serialize=false, std::string filename="");
 
 
         //编码/解码

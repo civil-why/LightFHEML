@@ -131,20 +131,37 @@ void Controller::generateContext(int logRing,int logScale,int logPrimes,int digi
 void Controller::generateBootstrappingAndRotationKeys(const vector<int>& rotations,
                                                         uint32_t bootstrappingDepth,
                                                         bool serialize,
-                                                        const string& filename){
-
-
-
+                                                        const string& filename)
+{
+    generateBootstrappingKeys(bootstrappingDepth);
+    generateRotationKeys(rotations, serialize, filename);
+    return;
 }
 
-void Controller::generateBootstrappingKeys()
+void Controller::generateBootstrappingKeys(int bootstrap_slots)
 {
-
+    context->EvalBootstrapSetup(level_budget, {0, 0}, bootstrap_slots);
+    context->EvalBootstrapKeyGen(keyPair.secretKey,bootstrap_slots);
+    return;
 }
 
-void Controller::generateRotationKeys()
+void Controller::generateRotationKeys(const vector<int>& rotations, bool serialize,string filename)
 {
+    context->EvalRotateKeyGen(keyPair.secretKey, rotations);
 
+    if (serialize) {
+        ofstream rotationKeyFile("../" + controllerFolder + "/rot_" + filename, ios::out | ios::binary);
+        if (rotationKeyFile.is_open()) {
+            if (!context->SerializeEvalAutomorphismKey(rotationKeyFile, SerType::BINARY)) {
+                cerr << "Error writing rotation keys" << endl;
+                exit(1);
+            }
+            cout << "Rotation keys \"" << filename << "\" have been serialized" << endl;
+        } else {
+            cerr << "Error serializing Rotation keys" << "../" + controllerFolder + "/rot_" + filename << endl;
+            exit(1);
+        }
+    }
 }
 
 Ptxt Controller::Encode(const vector<double> &vec,int level,int slot)
@@ -292,9 +309,11 @@ Ctxt Controller::convbn(const Ctxt &c, int layer, int n,ConvConfig config, doubl
         context->EvalRotate(
             context->EvalFastRotation(c,padding,context->GetCyclotomicOrder(),digits),config.img_width));//右下
 
-    Ptxt bias = Encode(read_values_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-bias.bin", scale), c->GetLevel(), 16384);
+    Ptxt bias = Encode(read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-bias.bin", scale), c->GetLevel(), 16384);
 
+    Ctxt finalsum;
 
+    generateRotationKeys({1024});
 
 }
 

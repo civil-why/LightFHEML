@@ -100,7 +100,36 @@ namespace tools {
             cerr << "Cannot open " << filename << "." <<endl;
             exit(1);
         }
-    }}
+    }
 
+    static inline vector<double> read_from_file(string filename,double scale = 1.0) {
+        vector<double> res;
+
+        ifstream file (filename);
+        if (file.is_open()) {
+
+            string row;
+            
+            while (std::getline(file, row)) {
+               
+                istringstream stream(row);
+                string value;
+
+                while (std::getline(stream, value, ',')) {
+                    try {
+                        double num = stod(value);
+                        res.push_back(num * scale);
+                    } catch (const invalid_argument& e) {
+                        cerr << "Cannot convert: " << value << endl;
+                    }
+                }
+            }
+        } else {
+            cerr << "Cannot open " << filename << "." <<endl;
+            return res;
+        }
+        return res;
+    }
+}
 
 #endif
