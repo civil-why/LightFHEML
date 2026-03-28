@@ -20,11 +20,10 @@ using Ptxt = Plaintext;
 using Ctxt = Ciphertext<DCRTPoly>;
 
 struct ConvConfig{
-    int img_width;
-    int num_channels;
-    int rotation_step;
-    int slots;
-    string weight_prefix;
+    int img_width;          //输入图像宽度
+    int num_channels;       //输入图像通道数
+    int slots;              //槽位
+    string weight_prefix;   //权重前缀
 };
 
 class Controller //controller肯定是对整个系统的控制，密钥肯定是每次单独生成
@@ -71,7 +70,7 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         Ctxt relu_wide(const Ctxt& c,double a, double b, int degree, double scale,bool timing=false);
 
         //神经元函数 卷积+BN
-        Ctxt convbn(const Ctxt &c, int layer, int n,int img_width, int num_channels, int slots, double scale = 0.5, bool timing=false);
+        Ctxt convbn(const Ctxt &c, int layer, int n,ConvConfig config, double scale = 0.5, bool timing=false);
         Ctxt basicBlock();
         Ctxt downSampling(const Ctxt& c);
 
@@ -81,6 +80,9 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         Ctxt layer3(const Ctxt& c);
         Ctxt classificationLayer(const Ctxt& c);
 
+        //掩码
+        Ptxt generateMask(int n,int mod,int from,int to,int level,int padding,int pos,double custom_val);
+        Ptxt genFirstMask(int n,int level);
 
 
     private:
