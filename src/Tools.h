@@ -130,6 +130,28 @@ namespace tools {
         }
         return res;
     }
+
+    static inline double compute_approx_error(Plaintext expected, Plaintext bootstrapped) {
+        vector<complex<double>> result;
+        vector<complex<double>> expectedResult;
+
+        result = bootstrapped->GetCKKSPackedValue();
+        expectedResult = expected->GetCKKSPackedValue();
+
+
+        if (result.size() != expectedResult.size())
+            OPENFHE_THROW(config_error, "Cannot compare vectors with different numbers of elements");
+
+        // using the infinity norm
+        double maxError = 0;
+        for (size_t i = 0; i < result.size(); ++i) {
+            double error = std::abs(result[i].real() - expectedResult[i].real());
+            if (maxError < error)
+                maxError = error;
+        }
+
+        return std::abs(std::log2(maxError));
+    }
 }
 
 #endif
