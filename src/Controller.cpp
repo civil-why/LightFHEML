@@ -39,7 +39,7 @@ void Controller::generateContext(bool serialize)
 
     if(!serialize){ return;}
 
-    ofstream multKey("../"+controllerFolder+"/multKey.txt",ios::out|ios::binary);
+    ofstream multKey("../"+controllerFolder+"/mult-keys.txt",ios::out|ios::binary);
     if(multKey.is_open()){
         if(!context->SerializeEvalMultKey(multKey,SerType::BINARY)){
             exit(1);
@@ -47,7 +47,7 @@ void Controller::generateContext(bool serialize)
         multKey.close();
     }else{exit(1);}
 
-    if(!Serial::SerializeToFile("../"+controllerFolder+"/context.txt",context,SerType::BINARY)){
+    if(!Serial::SerializeToFile("../"+controllerFolder+"/crypto-context.txt",context,SerType::BINARY)){
         exit(1);
     }
 
@@ -60,7 +60,7 @@ void Controller::generateContext(bool serialize)
     }
 }
 
-void Controller::generateContext(int logRing,int logScale,int logPrimes,int digitsHks,int ctsLevels,int stcLevels,int reluDeg,bool serialize=false)
+void Controller::generateContext(int logRing,int logScale,int logPrimes,int digitsHks,int ctsLevels,int stcLevels,int reluDeg,bool serialize)
 {
     CCParams<CryptoContextCKKSRNS> params;
 
@@ -106,7 +106,7 @@ void Controller::generateContext(int logRing,int logScale,int logPrimes,int digi
 
     if(!serialize){ return;}
 
-    ofstream multKey("../"+controllerFolder+"/multKey.txt",ios::out|ios::binary);
+    ofstream multKey("../"+controllerFolder+"/mult-keys.txt",ios::out|ios::binary);
     if(multKey.is_open()){
         if(!context->SerializeEvalMultKey(multKey,SerType::BINARY)){
             exit(1);
@@ -114,7 +114,7 @@ void Controller::generateContext(int logRing,int logScale,int logPrimes,int digi
         multKey.close();
     }else{exit(1);}
 
-    if(!Serial::SerializeToFile("../"+controllerFolder+"/context.txt",context,SerType::BINARY)){
+    if(!Serial::SerializeToFile("../"+controllerFolder+"/crypto-context.txt",context,SerType::BINARY)){
         exit(1);
     }
 
@@ -152,8 +152,8 @@ void Controller::loadContext(bool verbose)
         exit(1);
     }
 
-    key_pair.publicKey = clientPublicKey;
-    key_pair.secretKey = serverSecretKey;
+    keyPair.publicKey = clientPublicKey;
+    keyPair.secretKey = serverSecretKey;
 
     std::ifstream multKeyIStream("../" + controllerFolder + "/mult-keys.txt", ios::in | ios::binary);
     if (!multKeyIStream.is_open()) {
@@ -165,22 +165,22 @@ void Controller::loadContext(bool verbose)
         exit(1);
     }
 
-    relu_degree = stoi(read_from_file("../" + controllerFolder + "/relu_degree.txt"));
+    relu_degree = stoi(read_first_line("../" + controllerFolder + "/relu_degree.txt"));
 
-    level_budget[0] = read_from_file("../" + controllerFolder + "/level_budget.txt").at(0) - '0';
-    level_budget[1] = read_from_file("../" + controllerFolder + "/level_budget.txt").at(2) - '0';
+    level_budget[0] = read_first_line("../" + controllerFolder + "/level_budget.txt").at(0) - '0';
+    level_budget[1] = read_first_line("../" + controllerFolder + "/level_budget.txt").at(2) - '0';
 
     if (verbose) cout << "CtoS: " << level_budget[0] << ", StoC: " << level_budget[1] << endl;
 
     uint32_t approxBootstrapDepth = 4 + 4;  
 
-    uint32_t levelsUsedBeforeBootstrap = get_relu_depth(relu_degree) + 3;
+    uint32_t levelsUsedBeforeBootstrap = relu_depth[relu_degree] + 3;
 
-    circuit_depth = levelsUsedBeforeBootstrap + FHECKKSRNS::GetBootstrapDepth(approxBootstrapDepth, level_budget, SPARSE_TERNARY);
+    circuitDepth = levelsUsedBeforeBootstrap + FHECKKSRNS::GetBootstrapDepth(approxBootstrapDepth, level_budget, SPARSE_TERNARY);
 
-    if (verbose) cout << "Circuit depth: " << circuit_depth << ", available multiplications: " << levelsUsedBeforeBootstrap - 2 << endl;
+    if (verbose) cout << "Circuit depth: " << circuitDepth << ", available multiplications: " << levelsUsedBeforeBootstrap - 2 << endl;
 
-    num_slots = 1 << 14;
+    slotNum = 1 << 14;
 }
 
 void Controller::generateBootstrappingAndRotationKeys(const vector<int>& rotations,
@@ -323,7 +323,7 @@ Ctxt Controller::Mul(const Ctxt& a, const Ptxt& b)
     return context->EvalMult(a,b);
 }
 
-Ctxt Controller::bootstrap(const Ctxt& c,bool timing = false)
+Ctxt Controller::bootstrap(const Ctxt& c,bool timing)
 {
     //层数耗尽，开始自举
     if (static_cast<int>(c->GetLevel()) + 2 < circuitDepth && timing) {
@@ -342,11 +342,12 @@ Ctxt Controller::bootstrap(const Ctxt& c,bool timing = false)
     return res;
 }
 
-Ctxt Controller::bootstrap(const Ctxt& c,int precision, bool timing=false)
+Ctxt Controller::bootstrap(const Ctxt& c,int precision, bool timing)
 {
     //考虑精度对自举的影响
     if (static_cast<int>(c->GetLevel()) + 2 < circuitDepth && timing) {
         cout << "You are bootstrapping with remaining levels! You are at " << to_string(c->GetLevel()) << "/" << circuitDepth - 2 << endl;
+        return c;
     }
 
     auto start = begin_time();
@@ -356,9 +357,11 @@ Ctxt Controller::bootstrap(const Ctxt& c,int precision, bool timing=false)
     if (timing) {
         print_duration(start, "Bootstrapping " + to_string(c->GetSlots()) + " slots");
     }
+
+    return res;
 }
 
-Ctxt Controller::relu(const Ctxt& c,double scale,bool timing=false)//切比雪夫近似ReLU
+Ctxt Controller::relu(const Ctxt& c,double scale,bool timing)//切比雪夫近似ReLU
 {
     auto start = begin_time();
     //调试过程的解密是不必要的，是可能造成信息泄露的。
@@ -372,7 +375,7 @@ Ctxt Controller::relu(const Ctxt& c,double scale,bool timing=false)//切比雪�
     return res;
 }
 
-Ctxt Controller::relu_wide(const Ctxt& c,double a, double b, int degree, double scale,bool timing=false)
+Ctxt Controller::relu_wide(const Ctxt& c,double a, double b, int degree, double scale,bool timing)
 {
     auto start = begin_time();
     
@@ -386,7 +389,7 @@ Ctxt Controller::relu_wide(const Ctxt& c,double a, double b, int degree, double 
     return res;
 }
 
-Ctxt Controller::convbn_initial(const Ctxt &c,double scale = 0.5, bool timing=false)
+Ctxt Controller::convbn_initial(const Ctxt &c,double scale, bool timing)
 {
     auto start = begin_time();
 
@@ -468,7 +471,7 @@ Ctxt Controller::convbn_initial(const Ctxt &c,double scale = 0.5, bool timing=fa
     return finalsum;
 }
 
-Ctxt Controller::convbn(const Ctxt &c, int layer, int n,ConvConfig config, double scale = 0.5, bool timing=false)
+Ctxt Controller::convbn(const Ctxt &c, int layer, int n,ConvConfig config, double scale , bool timing)
 {
     auto start = begin_time();
 
@@ -534,7 +537,7 @@ Ctxt Controller::convbn(const Ctxt &c, int layer, int n,ConvConfig config, doubl
     return finalsum;
 }
 
-vector<Ctxt> Controller::convbnSx(const Ctxt &c, int layer, int n,ConvConfig config, double scale = 0.5, bool timing=false)
+vector<Ctxt> Controller::convbnSx(const Ctxt &c, int layer, int n,ConvConfig config, double scale, bool timing)
 {
      auto start = begin_time();
 
@@ -580,7 +583,7 @@ vector<Ctxt> Controller::convbnSx(const Ctxt &c, int layer, int n,ConvConfig con
             k_rows1.push_back(context->EvalMult(c_rotations[k], encoded));
 
             values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
-                                                          to_string(j+16) + "-k" + to_string(k+1) + ".bin", scale);
+                                                          to_string(j+config.num_channels) + "-k" + to_string(k+1) + ".bin", scale);
             encoded = Encode(values, c->GetLevel(), config.slot);
             k_rows2.push_back(context->EvalMult(c_rotations[k], encoded));
         }
@@ -612,11 +615,9 @@ vector<Ctxt> Controller::convbnSx(const Ctxt &c, int layer, int n,ConvConfig con
     return {finalsum1,finalsum2};
 }
 
-vector<Ctxt> Controller::convbnDx(const Ctxt &c, int layer, int n,ConvConfig config, double scale = 0.5, bool timing=false)
+vector<Ctxt> Controller::convbnDx(const Ctxt &c, int layer, int n,ConvConfig config, double scale, bool timing)
 {
     auto start = begin_time();
-
-    int padding=1;
 
     Ptxt bias1 = Encode(read_from_file("../weights/layer" + to_string(layer) + "dx-conv" + to_string(n) + "bn" + to_string(n) + "-bias1.bin", scale), c->GetLevel(), config.slot);
     Ptxt bias2 = Encode(read_from_file("../weights/layer" + to_string(layer) + "dx-conv" + to_string(n) + "bn" + to_string(n) + "-bias2.bin", scale), c->GetLevel(), config.slot);
@@ -633,7 +634,7 @@ vector<Ctxt> Controller::convbnDx(const Ctxt &c, int layer, int n,ConvConfig con
             k_rows1.push_back(context->EvalMult(c, encoded));
 
             values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
-                                                          to_string(j+config.img_width) + "-k" + to_string(k+1) + ".bin", scale);
+                                           to_string(j+config.num_channels) + "-k" + to_string(k+1) + ".bin", scale);
             encoded = Encode(values, c->GetLevel(), config.slot);
             k_rows2.push_back(context->EvalMult(c, encoded));
         }
@@ -937,6 +938,7 @@ Ptxt Controller::generateMask(int n,int level,MaskConfig config,double custom_va
             return Encode(mask, level, slotNum);
         }
     }
+    return Encode({0});
 }
 
  Ctxt Controller::initLayer(const Ctxt& c, int verbose)//一层convbn一层relu
@@ -979,7 +981,7 @@ Ctxt Controller::layer1(const Ctxt& c, int verbose)//三层basicblock
 
     scale = 0.55;
 
-    auto start = begin_time();
+    start = begin_time();
     res2=convbn(res1,2,1, config, scale, verbose > 1);
     res2=bootstrap(res2);
     res2=relu(res2, scale, verbose > 1);
@@ -996,7 +998,7 @@ Ctxt Controller::layer1(const Ctxt& c, int verbose)//三层basicblock
 
     scale = 0.63;
 
-    auto start = begin_time();
+    start = begin_time();
     res3=convbn(res2,3,1, config, scale, verbose > 1);
     res3=bootstrap(res3);
     res3=relu(res3, scale, verbose > 1);
@@ -1248,7 +1250,7 @@ Ctxt Controller::classificationLayer(const Ctxt& c,string input_filename,int ver
     return res;
 }
 
-void Controller::print(const Ctxt& c, int slots = 0, string prefix = "")
+void Controller::print(const Ctxt& c, int slots, string prefix)
 {
     if (slots == 0) {
         slots = slotNum;

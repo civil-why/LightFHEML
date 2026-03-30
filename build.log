@@ -1,0 +1,4 @@
+CMake Error: The current CMakeCache.txt directory /home/civil/LightFHEML/build/CMakeCache.txt is different than the directory /home/civil/build where CMakeCache.txt was created. This may result in binaries being created in the wrong place. If you are not sure, reedit the CMakeCache.txt
+[ 33%] Building CXX object CMakeFiles/LightFHEML.dir/src/Controller.cpp.o
+[ 66%] Linking CXX executable LightFHEML
+[100%] Built target LightFHEML

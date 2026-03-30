@@ -134,9 +134,8 @@ void check_arguments(int argc, char *argv[])
     context_version=-1;
 
     for (int i = 1; i < argc; ++i) {
-        //I first check the "verbose" command
         if (string(argv[i]) == "verbose") {
-            if (i + 1 < argc) { // Verifica se c'è un argomento successivo a "input"
+            if (i + 1 < argc) { 
                 verbose = atoi(argv[i + 1]);
             }
         }
@@ -179,10 +178,6 @@ void check_arguments(int argc, char *argv[])
         else if(string(argv[i])=="input"){
             if(i+1<argc)
                 input_filename="../"+string(argv[i+1]);               
-        }
-        else{
-            cout << "Cannot figure out the argument " << argv[i] << endl;
-            exit(1);
         }
     }
 }
