@@ -270,9 +270,10 @@ Ctxt Controller::Mul(const Ctxt& a, const Ptxt& b)
 
 Ctxt Controller::bootstrap(const Ctxt& c,bool timing = false)
 {
-    //所有层数耗尽，开始自举
+    //层数耗尽，开始自举
     if (static_cast<int>(c->GetLevel()) + 2 < circuitDepth && timing) {
         cout << "You are bootstrapping with remaining levels! You are at " << to_string(c->GetLevel()) << "/" << circuitDepth - 2 << endl;
+        return c;//存在大量层数为什么还要自举？
     }
 
     auto start = begin_time();
@@ -520,12 +521,12 @@ vector<Ctxt> Controller::convbnSx(const Ctxt &c, int layer, int n,ConvConfig con
         for (int k = 0; k < 9; k++) {
             vector<double> values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
                                                           to_string(j) + "-k" + to_string(k+1) + ".bin", scale);
-            Ptxt encoded = Encode(values, c->GetLevel(), config.slot);//关于convbn2，原作者使用了cirrcuit_depth-2的固定长度，但我们不去管他
+            Ptxt encoded = Encode(values, c->GetLevel(), config.slot);
             k_rows1.push_back(context->EvalMult(c_rotations[k], encoded));
 
             values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
                                                           to_string(j+16) + "-k" + to_string(k+1) + ".bin", scale);
-            encoded = Encode(values, c->GetLevel(), config.slot);//关于convbn2，原作者使用了cirrcuit_depth-2的固定长度，但我们不去管他
+            encoded = Encode(values, c->GetLevel(), config.slot);
             k_rows2.push_back(context->EvalMult(c_rotations[k], encoded));
         }
 
@@ -562,7 +563,6 @@ vector<Ctxt> Controller::convbnDx(const Ctxt &c, int layer, int n,ConvConfig con
 
     int padding=1;
 
-
     Ptxt bias1 = Encode(read_from_file("../weights/layer" + to_string(layer) + "dx-conv" + to_string(n) + "bn" + to_string(n) + "-bias1.bin", scale), c->GetLevel(), config.slot);
     Ptxt bias2 = Encode(read_from_file("../weights/layer" + to_string(layer) + "dx-conv" + to_string(n) + "bn" + to_string(n) + "-bias2.bin", scale), c->GetLevel(), config.slot);
 
@@ -574,12 +574,12 @@ vector<Ctxt> Controller::convbnDx(const Ctxt &c, int layer, int n,ConvConfig con
         for (int k = 0; k < 9; k++) {
             vector<double> values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
                                                           to_string(j) + "-k" + to_string(k+1) + ".bin", scale);
-            Ptxt encoded = Encode(values, c->GetLevel(), config.slot);//关于convbn2，原作者使用了cirrcuit_depth-2的固定长度，但我们不去管他
+            Ptxt encoded = Encode(values, c->GetLevel(), config.slot);
             k_rows1.push_back(context->EvalMult(c, encoded));
 
             values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
                                                           to_string(j+config.img_width) + "-k" + to_string(k+1) + ".bin", scale);
-            encoded = Encode(values, c->GetLevel(), config.slot);//关于convbn2，原作者使用了cirrcuit_depth-2的固定长度，但我们不去管他
+            encoded = Encode(values, c->GetLevel(), config.slot);
             k_rows2.push_back(context->EvalMult(c, encoded));
         }
 
@@ -611,7 +611,8 @@ vector<Ctxt> Controller::convbnDx(const Ctxt &c, int layer, int n,ConvConfig con
 }
 
 
-Ctxt Controller::downsample1024to256(const Ctxt &c1, const Ctxt &c2) {
+Ctxt Controller::downsample1024to256(const Ctxt &c1, const Ctxt &c2)
+{
     c1->SetSlots(32768);
     c2->SetSlots(32768);
     slotNum = 16384*2;
@@ -620,6 +621,7 @@ Ctxt Controller::downsample1024to256(const Ctxt &c1, const Ctxt &c2) {
     config1.type = MaskType::FIRST_N;
     config2.type = MaskType::LAST_N;
 
+    //c1的前半段和c2的后半段相加，综合成一个ctxt
     Ctxt fullpack=Add(Mul(c1, generateMask(16384, c1->GetLevel(), config1, 0.0)), Mul(c2, generateMask(16384, c2->GetLevel(), config2, 0.0)));
 
     MaskConfig temp;
@@ -631,11 +633,11 @@ Ctxt Controller::downsample1024to256(const Ctxt &c1, const Ctxt &c2) {
 
     Ctxt downsampledrows = Encrypt(Encode({0}));
 
-
     for (int i = 0; i < 16; i++) {
         temp.type=MaskType::PER_BLOCK_SLICE_32;
         temp.padding=1024;
         temp.pos=i;
+
         Ctxt masked = context->EvalMult(fullpack, generateMask(16,fullpack->GetLevel(),temp,0));
         downsampledrows = context->EvalAdd(downsampledrows, masked);
         if (i < 15) {
@@ -644,6 +646,7 @@ Ctxt Controller::downsample1024to256(const Ctxt &c1, const Ctxt &c2) {
     }
 
     Ctxt downsampledchannels = Encrypt(Encode({0}));
+
     for (int i = 0; i < 32; i++) {
         temp.type=MaskType::SKIP_N_BLOCKS_THEN_256_32;
         Ctxt masked = context->EvalMult(downsampledrows, generateMask(i, downsampledrows->GetLevel(),temp,0));
@@ -891,22 +894,264 @@ Ptxt Controller::generateMask(int n,int level,MaskConfig config,double custom_va
     return res;
  }
 
-Ctxt Controller::layer1(const Ctxt& c)
+Ctxt Controller::layer1(const Ctxt& c, int verbose)//三层basicblock
 {
+    double scale=1.0;
 
+    auto start = begin_time();
+
+    ConvConfig config;
+    config.img_width=32;
+    config.img_size=1024;
+    config.num_channels=16;
+    config.slot=16384;
+
+    Ctxt res1=c->Clone(),res2,res3;
+
+    res1=convbn(res1,1,1, config, scale, verbose > 1);
+    res1=bootstrap(res1);
+    res1=relu(res1, scale, verbose > 1);
+
+    scale = 0.52;
+
+    res1=convbn(res1,1,2, config, scale, verbose > 1);
+    res1=Add(res1,Mul(c,scale));
+    res1=bootstrap(res1,verbose>1);
+    res1=relu(res1, scale, verbose > 1);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer1 - Block 1---" << endl;
+
+    scale = 0.55;
+
+    auto start = begin_time();
+    res2=convbn(res1,2,1, config, scale, verbose > 1);
+    res2=bootstrap(res2);
+    res2=relu(res2, scale, verbose > 1);
+
+    scale = 0.36;
+
+    res2=convbn(res2,2,2, config, scale, verbose > 1);
+    res2=Add(res2,Mul(c,scale));
+    res2=bootstrap(res2,verbose>1);
+    res2=relu(res2, scale, verbose > 1);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer1 - Block 2---" << endl;
+
+    scale = 0.63;
+
+    auto start = begin_time();
+    res3=convbn(res2,3,1, config, scale, verbose > 1);
+    res3=bootstrap(res3);
+    res3=relu(res3, scale, verbose > 1);
+
+    scale = 0.42;
+
+    res3=convbn(res3,3,2, config, scale, verbose > 1);
+    res3=Add(res3,Mul(c,scale));
+    res3=bootstrap(res3,verbose>1);
+    res3=relu(res3, scale, verbose > 1);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer1 - Block 2---" << endl;
+
+    return res3;
 }
 
-Ctxt Controller::layer2(const Ctxt& c)
+Ctxt Controller::layer2(const Ctxt& c, int verbose)//一层下采样，两层basicblock
 {
 
+    double scaleSx = 0.57;
+    double scaleDx = 0.40;
+
+
+    bool timing = verbose > 1;
+
+    if (verbose > 1) cout << "---Start: Layer2 - Block 1---" << endl;
+    auto start = begin_time();
+    Ctxt boot_in = bootstrap(c, timing);
+
+    ConvConfig config;
+    config.img_width=32;
+    config.img_size=1024;
+    config.num_channels=16;
+    config.slot=16384;
+
+    vector<Ctxt> res1sx = convbnSx(boot_in, 4, 1,config, scaleSx, timing); 
+
+    vector<Ctxt> res1dx = convbnDx(boot_in, 4, 1,config, scaleDx, timing); 
+
+    clear_keys();
+    load_rotation_keys("rotations-layer2-downsample.bin");
+
+    Ctxt fullpackSx = downsample1024to256(res1sx[0], res1sx[1]);
+    Ctxt fullpackDx = downsample1024to256(res1dx[0], res1dx[1]);
+
+    res1sx.clear();
+    res1dx.clear();
+
+    clear_keys();
+    load_bootstrapping_and_rotation_keys("rotations-layer2.bin", 8192);
+
+    slotNum = 8192;
+    fullpackSx = bootstrap(fullpackSx, timing);
+
+    fullpackSx = relu(fullpackSx, scaleSx, timing);
+
+    ConvConfig config2;
+    config2.img_width=16;
+    config2.img_size=256;
+    config2.slot=8192;
+    config2.num_channels=32;
+
+    fullpackSx = convbn(fullpackSx, 4, 2, config2, scaleDx, timing);//使用右分支
+
+    Ctxt res1 = Add(fullpackSx, fullpackDx);
+    res1 = bootstrap(res1, timing);
+    res1 = relu(res1, scaleDx, timing);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer2 - Block 1---" << endl;//下采样结束
+
+    double scale = 0.76;
+
+    if (verbose > 1) cout << "---Start: Layer2 - Block 2---" << endl;
+    start = begin_time();
+
+    Ctxt res2;
+    res2 = convbn(res1, 5, 1, config2, scale, timing);
+    res2 = bootstrap(res2, timing);
+    res2 = relu(res2, scale, timing);
+
+    scale = 0.37;
+
+    res2 = convbn(res2, 5, 2, config2, scale, timing);
+    res2 = Add(res2, Mul(res1, scale));
+    res2 = bootstrap(res2, timing);
+    res2 = relu(res2, scale, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer2 - Block 2---" << endl;
+
+    scale = 0.63;
+
+    if (verbose > 1) cout << "---Start: Layer2 - Block 3---" << endl;
+    start = begin_time();
+    Ctxt res3;
+    res3 = convbn(res2, 6, 1, config2, scale, timing);
+    res3 = bootstrap(res3, timing);
+    res3 = relu(res3, scale, timing);
+  
+    scale = 0.25;
+
+    res3 = convbn(res3, 6, 2, config2, scale, timing);
+    res3 = Add(res3, Mul(res2, scale));
+    res3 = bootstrap(res3, timing);
+    res3 = relu(res3, scale, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer2 - Block 3---" << endl;
+
+    return res3;
 }
 
-Ctxt Controller::layer3(const Ctxt& c)
+Ctxt Controller::layer3(const Ctxt& c, int verbose)
 {
+    double scaleSx = 0.63;
+    double scaleDx = 0.40;
 
+    bool timing = verbose > 1;
+
+    if (verbose > 1) cout << "---Start: Layer3 - Block 1---" << endl;
+    auto start = begin_time();
+    Ctxt boot_in = bootstrap(c, timing);
+
+    ConvConfig config;
+    config.img_width=16;
+    config.img_size=256;
+    config.num_channels=32;
+    config.slot=8192;
+
+    vector<Ctxt> res1sx = convbnSx(boot_in, 7, 1,config, scaleSx, timing); 
+
+    vector<Ctxt> res1dx = convbnDx(boot_in, 7, 1,config, scaleDx, timing);
+
+    clear_keys();
+    load_rotation_keys("rotations-layer3-downsample.bin");
+
+    Ctxt fullpackSx = downsample256to64(res1sx[0], res1sx[1]);
+    Ctxt fullpackDx = downsample256to64(res1dx[0], res1dx[1]);
+    res1sx.clear();
+    res1dx.clear();
+
+    clear_keys();
+    load_bootstrapping_and_rotation_keys("rotations-layer3.bin", 4096);
+
+    slotNum = 4096;
+    fullpackSx = bootstrap(fullpackSx, timing);
+
+    fullpackSx = relu(fullpackSx, scaleSx, timing);
+
+    ConvConfig config2;
+    config2.img_width=8;
+    config2.img_size=64;
+    config2.slot=4096;
+    config2.num_channels=64;
+
+    fullpackSx = convbn(fullpackSx, 7, 2, config2, scaleDx, timing);
+
+    Ctxt res1 = Add(fullpackSx, fullpackDx);
+    res1 = bootstrap(res1, timing);
+    res1 = relu(res1, scaleDx, timing);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer3 - Block 1---" << endl;
+
+    double scale = 0.57;
+
+
+    if (verbose > 1) cout << "---Start: Layer3 - Block 2---" << endl;
+    start = begin_time();
+    Ctxt res2;
+    res2 = convbn(res1, 8, 1, config2, scale, timing);
+    res2 = bootstrap(res2, timing);
+    res2 = relu(res2, scale, timing);
+
+    scale = 0.33;
+
+    res2 = convbn(res2, 8, 2, config2, scale, timing);
+    res2 = Add(res2, Mul(res1, scale));
+    res2 = bootstrap(res2, timing);
+    res2 = relu(res2, scale, timing);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer3 - Block 2---" << endl;
+
+    scale = 0.69;
+
+    if (verbose > 1) cout << "---Start: Layer3 - Block 3---" << endl;
+    start = begin_time();
+    Ctxt res3;
+
+    res3 = convbn(res2, 9, 1, config2, scale, timing);
+    res3 = bootstrap(res3, timing);
+    res3 = relu(res3, scale, timing);
+
+    scale = 0.1;
+
+    res3 = convbn(res3, 9, 2, config2, scale, timing);
+    res3 = Add(res3, Mul(res2, scale));
+    res3 = bootstrap(res3, timing);
+    res3 = relu(res3, scale, timing);
+    res3 = bootstrap(res3, timing);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer3 - Block 3---" << endl;
+
+
+    return res3;
 }
 
-Ctxt Controller::classificationLayer(const Ctxt& c)
+Ctxt Controller::classificationLayer(const Ctxt& c, int verbose)
 {
     
 }

@@ -20,14 +20,24 @@ using Ptxt = Plaintext;
 using Ctxt = Ciphertext<DCRTPoly>;
 
 struct ConvConfig{
-    int img_width;          //输入图像宽度
-    int num_channels;       //输入图像通道数
-    int slots;              //槽位
-    string weight_prefix;   //权重前缀
+    int img_width;          //输入图像宽度，layer1为32，layer2为16，layer3为8
+    int img_size;           //输入图像大小，layer1为1024，layer2为256，layer3为64
+    int num_channels;       //输入图像通道数，layer1为16，layer2为32，layer3为64
+    int slot;               //slot数量，layer1为16384，layer2为8192，layer3为4096
 };
 
+enum class MaskType{FIRST_N,
+    LAST_N,
+    FIRST_N_OF_EVERY_2N,
+    PER_BLOCK_SLICE_32,
+    PER_BLOCK_SLICE_64,
+    SKIP_N_BLOCKS_THEN_256_32,
+    SKIP_N_BLOCKS_THEN_64_64,
+    EVERY_NTH,
+    RANGE};
+
 struct MaskConfig{
-    int mod;            //mask类型
+    MaskType type;            //mask类型
     int from;           //mask起始位置
     int to;             //mask结束位置
     int padding;        //mask填充长度
@@ -62,12 +72,12 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         void clear_keys();
 
         //编码/解码
-        Ptxt Encode(const vector<double> &vec,int level,int slot);
+        Ptxt Encode(const vector<double> &vec,int level=0,int slot=0);
         Ptxt Encode(double val, int level, int slot);
         vector<double> Decode(Ctxt &c,int slot);
 
         //加密/解密
-        void Encrypt(const Ptxt& p);
+        Ctxt Encrypt(const Ptxt& p);
         Ptxt Decrypt(const Ctxt& c);
 
         //重写运算符号
@@ -81,18 +91,29 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         Ctxt relu_wide(const Ctxt& c,double a, double b, int degree, double scale,bool timing=false);
 
         //神经元函数 卷积+BN
+        Ctxt convbn_initial(const Ctxt &c, double scale = 0.5, bool timing=false);
         Ctxt convbn(const Ctxt &c, int layer, int n,ConvConfig config, double scale = 0.5, bool timing=false);
-        Ctxt basicBlock();
-        Ctxt downSampling(const Ctxt& c);
+        vector<Ctxt> convbnSx(const Ctxt &c, int layer, int n,ConvConfig config, double scale = 0.5, bool timing=false);
+        vector<Ctxt> convbnDx(const Ctxt &c, int layer, int n,ConvConfig config, double scale = 0.5, bool timing=false);
+       
+        Ctxt downsample1024to256(const Ctxt& c1, const Ctxt& c2);
+        Ctxt downsample256to64(const Ctxt &c1, const Ctxt &c2);
 
-        Ctxt initLayer(const Ctxt& c);
-        Ctxt layer1(const Ctxt& c);
-        Ctxt layer2(const Ctxt& c);
-        Ctxt layer3(const Ctxt& c);
-        Ctxt classificationLayer(const Ctxt& c);
+        Ctxt rotsum(const Ctxt &in, int slots);
+        Ctxt rotsum_padded(const Ctxt &in, int slots);
+
+        Ctxt repeat(const Ctxt &in, int slots);
+
+        Ctxt initLayer(const Ctxt& c, int verbose=0);
+        Ctxt layer1(const Ctxt& c, int verbose=0);
+        Ctxt layer2(const Ctxt& c, int verbose=0);
+        Ctxt layer3(const Ctxt& c, int verbose=0);
+        Ctxt classificationLayer(const Ctxt& c, int verbose=0);
 
         //掩码
         Ptxt generateMask(int n,int level,MaskConfig config,double custom_val);
+
+        void bootstrap_precision(const Ctxt& c);
 
     private:
         CryptoContext<DCRTPoly> context;    //每次只生成一个context，这个context将会控制整个系统的加密运算
