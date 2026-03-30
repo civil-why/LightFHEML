@@ -49,6 +49,7 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
 {
     public:
         string controllerFolder = "NO_FOLDER";
+        int circuitDepth;
         int relu_degree = 119;
 
         Controller() {}
@@ -56,7 +57,7 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         //生成context/释放context
         void generateContext(int logRing,int logScale,int logPrimes,int digitsHks,int ctsLevels,int stcLevels,int reluDeg,bool serialize=false);
         void generateContext(bool serialize=false);
-
+        void loadContext(bool verbose=true);
         void clear_context();
 
         //生成密钥/加载密钥/释放密钥
@@ -108,17 +109,18 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         Ctxt layer1(const Ctxt& c, int verbose=0);
         Ctxt layer2(const Ctxt& c, int verbose=0);
         Ctxt layer3(const Ctxt& c, int verbose=0);
-        Ctxt classificationLayer(const Ctxt& c, int verbose=0);
+        Ctxt classificationLayer(const Ctxt& c,string input_filename,int verbose=0);
 
         //掩码
         Ptxt generateMask(int n,int level,MaskConfig config,double custom_val);
 
+        //杂项
         void bootstrap_precision(const Ctxt& c);
+        void print(const Ctxt& c, int slots = 0, string prefix = "");
 
     private:
         CryptoContext<DCRTPoly> context;    //每次只生成一个context，这个context将会控制整个系统的加密运算
         KeyPair<DCRTPoly> keyPair;   
-        int circuitDepth;
         int slotNum;       
 
         vector<uint32_t> level_budget={4,4};

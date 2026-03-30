@@ -52,7 +52,7 @@ namespace tools {
         }
     }
 
-    static map<int,string> find_class ={
+    static map<int,string> class_map ={
         {0,"airplane"},
         {1,"automobile"},
         {2,"bird"},
@@ -129,6 +129,23 @@ namespace tools {
             return res;
         }
         return res;
+    }
+
+    static inline vector<double> read_fc_weight () //我不是很来得及改
+    {
+        vector<double> weight = read_from_file("../weights/fc.bin");
+        vector<double> weight_corrected;
+
+        for (int i = 0; i < 64; i++) {
+            for (int j = 0; j < 10; j++) {
+                weight_corrected.push_back(weight[(10 * i) + j]);
+            }
+            for (int j = 0; j < 64 - 10; j++) {
+                weight_corrected.push_back(0);
+            }
+        }
+
+        return weight_corrected;
     }
 
     static inline double compute_approx_error(Plaintext expected, Plaintext bootstrapped) {

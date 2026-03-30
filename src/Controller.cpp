@@ -128,6 +128,61 @@ void Controller::generateContext(int logRing,int logScale,int logPrimes,int digi
 
 }
 
+void Controller::loadContext(bool verbose)
+{
+    context->ClearEvalMultKeys();
+    context->ClearEvalAutomorphismKeys();
+
+    CryptoContextFactory<lbcrypto::DCRTPoly>::ReleaseAllContexts();
+
+     if (!Serial::DeserializeFromFile("../" + controllerFolder + "/crypto-context.txt", context, SerType::BINARY)) {
+        cerr << "I cannot read serialized data from: " << "../" + controllerFolder + "/crypto-context.txt" << endl;
+        exit(1);
+    }
+
+    PublicKey<DCRTPoly> clientPublicKey;
+    if (!Serial::DeserializeFromFile("../" + controllerFolder + "/public-key.txt", clientPublicKey, SerType::BINARY)) {
+        cerr << "I cannot read serialized data from public-key.txt" << endl;
+        exit(1);
+    }
+
+    PrivateKey<DCRTPoly> serverSecretKey;
+    if (!Serial::DeserializeFromFile("../" + controllerFolder + "/secret-key.txt", serverSecretKey, SerType::BINARY)) {
+        cerr << "I cannot read serialized data from public-key.txt" << endl;
+        exit(1);
+    }
+
+    key_pair.publicKey = clientPublicKey;
+    key_pair.secretKey = serverSecretKey;
+
+    std::ifstream multKeyIStream("../" + controllerFolder + "/mult-keys.txt", ios::in | ios::binary);
+    if (!multKeyIStream.is_open()) {
+        cerr << "Cannot read serialization from " << "mult-keys.txt" << endl;
+        exit(1);
+    }
+    if (!context->DeserializeEvalMultKey(multKeyIStream, SerType::BINARY)) {
+        cerr << "Could not deserialize eval mult key file" << endl;
+        exit(1);
+    }
+
+    relu_degree = stoi(read_from_file("../" + controllerFolder + "/relu_degree.txt"));
+
+    level_budget[0] = read_from_file("../" + controllerFolder + "/level_budget.txt").at(0) - '0';
+    level_budget[1] = read_from_file("../" + controllerFolder + "/level_budget.txt").at(2) - '0';
+
+    if (verbose) cout << "CtoS: " << level_budget[0] << ", StoC: " << level_budget[1] << endl;
+
+    uint32_t approxBootstrapDepth = 4 + 4;  
+
+    uint32_t levelsUsedBeforeBootstrap = get_relu_depth(relu_degree) + 3;
+
+    circuit_depth = levelsUsedBeforeBootstrap + FHECKKSRNS::GetBootstrapDepth(approxBootstrapDepth, level_budget, SPARSE_TERNARY);
+
+    if (verbose) cout << "Circuit depth: " << circuit_depth << ", available multiplications: " << levelsUsedBeforeBootstrap - 2 << endl;
+
+    num_slots = 1 << 14;
+}
+
 void Controller::generateBootstrappingAndRotationKeys(const vector<int>& rotations,
                                                         uint32_t bootstrappingDepth,
                                                         bool serialize,
@@ -1108,7 +1163,6 @@ Ctxt Controller::layer3(const Ctxt& c, int verbose)
 
     double scale = 0.57;
 
-
     if (verbose > 1) cout << "---Start: Layer3 - Block 2---" << endl;
     start = begin_time();
     Ctxt res2;
@@ -1151,9 +1205,86 @@ Ctxt Controller::layer3(const Ctxt& c, int verbose)
     return res3;
 }
 
-Ctxt Controller::classificationLayer(const Ctxt& c, int verbose)
+Ctxt Controller::classificationLayer(const Ctxt& c,string input_filename,int verbose)
 {
-    
+    clear_keys();
+    load_rotation_keys("rotations-finallayer.bin");
+
+    slotNum=4096;
+    Ptxt weight = Encode(read_fc_weight(), c->GetLevel(), slotNum); 
+
+    Ctxt res = rotsum(c, 64);
+
+    MaskConfig config;
+    config.type=MaskType::EVERY_NTH;
+    res = Mul(res, generateMask(64, res->GetLevel(),config, 1.0 / 64.0));
+
+    res = repeat(res, 16);
+    res = Mul(res, weight);
+    res = rotsum_padded(res, 64);
+
+    if (verbose >= 0) {
+        cout << "Decrypting the output..." << endl;
+        print(res, 10, "Output: ");
+    }
+
+
+    vector<double> clear_result = Decode(res, 10);
+
+    auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
+    int index_max = distance(clear_result.begin(), max_element_iterator);
+
+    if (verbose >= 0) {
+        cout << "The input image is classified as " << YELLOW_TEXT << tools::class_map[index_max] << RESET_COLOR << "" << endl;
+        cout << "The index of max element is " << YELLOW_TEXT << index_max << RESET_COLOR << "" << endl;  
+        
+        string command = "python3 ../src/plain/script.py \"" + input_filename + "\"";
+        int return_sys = system(command.c_str());
+        if (return_sys == 1) {
+            cout << "There was an error launching src/plain/script.py. Run it from Python in order to debug it." << endl;
+        }
+    }
+
+    return res;
+}
+
+void Controller::print(const Ctxt& c, int slots = 0, string prefix = "")
+{
+    if (slots == 0) {
+        slots = slotNum;
+    }
+
+    cout << prefix;
+
+    Ptxt result;
+    context->Decrypt(keyPair.secretKey, c, &result);
+    result->SetSlots(slotNum);
+    vector<double> v = result->GetRealPackedValue();
+
+    cout << setprecision(3) << fixed;
+    cout << "[ ";
+
+    for (int i = 0; i < slots; i += 1) {
+        string segno = "";
+        if (v[i] > 0) {
+            segno = " ";
+        } else {
+            segno = "-";
+            v[i] = -v[i];
+        }
+
+
+        if (i == slots - 1) {
+            cout << segno << v[i] << " ]";
+        } else {
+            if (abs(v[i]) < 0.00000001)
+                cout << " 0.0000000000" << ", ";
+            else
+                cout << segno << v[i] << ", ";
+        }
+    }
+
+    cout << endl;
 }
 
 void Controller::bootstrap_precision(const Ctxt &c) {
