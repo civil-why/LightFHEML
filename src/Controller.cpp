@@ -627,17 +627,15 @@ vector<Ctxt> Controller::convbnDx(const Ctxt &c, int layer, int n,ConvConfig con
     for (int j = 0; j < config.num_channels; j++) {
         vector<Ctxt> k_rows1,k_rows2;
 
-        for (int k = 0; k < 9; k++) {
-            vector<double> values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
-                                                          to_string(j) + "-k" + to_string(k+1) + ".bin", scale);
-            Ptxt encoded = Encode(values, c->GetLevel(), config.slot);
-            k_rows1.push_back(context->EvalMult(c, encoded));
+        vector<double> values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
+                                                        to_string(j) + "-k" + to_string(1) + ".bin", scale);
+        Ptxt encoded = Encode(values, c->GetLevel(), config.slot);
+        k_rows1.push_back(context->EvalMult(c, encoded));
 
-            values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
-                                           to_string(j+config.num_channels) + "-k" + to_string(k+1) + ".bin", scale);
-            encoded = Encode(values, c->GetLevel(), config.slot);
-            k_rows2.push_back(context->EvalMult(c, encoded));
-        }
+        values = read_from_file("../weights/layer" + to_string(layer) + "-conv" + to_string(n) + "bn" + to_string(n) + "-ch" +
+                                        to_string(j+config.num_channels) + "-k" + to_string(1) + ".bin", scale);
+        encoded = Encode(values, c->GetLevel(), config.slot);
+        k_rows2.push_back(context->EvalMult(c, encoded));
 
         Ctxt sum1 = context->EvalAddMany(k_rows1);
         Ctxt sum2 = context->EvalAddMany(k_rows2);
@@ -741,7 +739,7 @@ Ctxt Controller::downsample256to64(const Ctxt &c1, const Ctxt &c2) {
     Ctxt downsampledrows = Encrypt(Encode({0}));
 
     for (int i = 0; i < 32; i++) {
-        temp.type=MaskType::PER_BLOCK_SLICE_32;
+        temp.type=MaskType::PER_BLOCK_SLICE_64;
         temp.padding=256;
         temp.pos=i;
         Ctxt masked = context->EvalMult(fullpack, generateMask(8,fullpack->GetLevel(),temp,0));
@@ -1248,6 +1246,30 @@ Ctxt Controller::classificationLayer(const Ctxt& c,string input_filename,int ver
     }
 
     return res;
+}
+
+int Controller::classificationLayerGetLabel(const Ctxt& c)
+{
+    clear_keys();
+    load_rotation_keys("rotations-finallayer.bin");
+
+    slotNum=4096;
+    Ptxt weight = Encode(read_fc_weight(), c->GetLevel(), slotNum); 
+
+    Ctxt res = rotsum(c, 64);
+
+    MaskConfig config;
+    config.type=MaskType::EVERY_NTH;
+    res = Mul(res, generateMask(64, res->GetLevel(),config, 1.0 / 64.0));
+
+    res = repeat(res, 16);
+    res = Mul(res, weight);
+    res = rotsum_padded(res, 64);
+
+    vector<double> clear_result = Decode(res, 10);
+
+    auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
+    return index_max = distance(clear_result.begin(), max_element_iterator);
 }
 
 void Controller::print(const Ctxt& c, int slots, string prefix)

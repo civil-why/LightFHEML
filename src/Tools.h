@@ -35,6 +35,26 @@ namespace tools {
             cout << title << "Time : " << mins.count() << "min" << secs.count() << "." << ms.count() << "s" << " ( " << duration_cast<seconds>(duration_time).count() << "s)" << endl;
         }
     }
+
+    static inline void print_average_duration(chrono::time_point<steady_clock, nanoseconds> start, const string &title, int test_num) {
+        auto ms = duration_cast<milliseconds>(steady_clock::now() - start);
+
+        ms/=test_num;
+
+        duration_time += ms;//duration不一定从0开始
+
+        auto secs = duration_cast<seconds>(ms);//秒
+        ms -= duration_cast<milliseconds>(secs);
+        auto mins = duration_cast<minutes>(secs);//分
+        secs -= duration_cast<seconds>(mins);
+
+        if (mins.count() < 1) {
+            cout << title << "Average time : " << secs.count() << "." << ms.count() << "s" << " ( " << duration_cast<seconds>(duration_time).count() << "s)" << endl;
+        } else {
+            cout << title << "Average time : " << mins.count() << "min" << secs.count() << "." << ms.count() << "s" << " ( " << duration_cast<seconds>(duration_time).count() << "s)" << endl;
+        }
+    }
+
     static inline void print_duration_yellow(chrono::time_point<steady_clock, nanoseconds> start, const string &title) {
         auto ms = duration_cast<milliseconds>(steady_clock::now() - start);
 
@@ -169,6 +189,35 @@ namespace tools {
 
         return std::abs(std::log2(maxError));
     }
+
+    static inline vector<vector<double>> read_cifar10_batch(string filename, int num_images = 1000) {
+    vector<vector<double>> images;
+    ifstream file(filename, ios::binary);
+    
+    if (!file.is_open()) {
+        cerr << "Cannot open " << filename << endl;
+        exit(1);
+    }
+    
+    for (int i = 0; i < num_images; i++) {
+        vector<double> image;
+        unsigned char label;
+        file.read((char*)&label, 1); // 读取标签
+        
+        for (int j = 0; j < 3072; j++) {
+            unsigned char pixel;
+            file.read((char*)&pixel, 1);
+            // 归一化到[0,1]并调整通道顺序为R,G,B分开存储
+            image.push_back(static_cast<double>(pixel) / 255.0);
+        }
+        
+        image.push_back(static_cast<double>(label));
+        images.push_back(image);
+    }
+    
+    file.close();
+    return images;
+}
 }
 
 #endif

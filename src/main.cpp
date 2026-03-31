@@ -12,6 +12,8 @@ using namespace std;
 void check_arguments(int argc, char *argv[]);
 vector<double> read_image(const char *filename);
 
+bool test_mode = false;
+int test_num = 100; 
 int context_version;
 int verbose;
 string input_filename;
@@ -90,6 +92,51 @@ int main(int argc, char *argv[])
         controller.loadContext(verbose > 1);
     }
 
+    if(test_mode) {
+        auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
+        
+        int correct = 0;
+        int total = test_images.size();
+        auto start =begin_time();
+        
+        controller.load_bootstrapping_and_rotation_keys("rotations-layer1.bin", 16384);
+        
+        for(int idx = 0; idx < total; idx++) {
+            auto start_for_pic =begin_time();
+
+            auto& img_data = test_images[idx];
+            int true_label = static_cast<int>(img_data.back());
+            img_data.pop_back(); 
+            
+            Ctxt c = controller.Encrypt(controller.Encode(img_data, 
+                controller.circuitDepth - 4 - relu_depth[controller.relu_degree]));
+            
+            Ctxt firstLayer = controller.initLayer(c);
+            Ctxt resLayer1 = controller.layer1(firstLayer);
+            Ctxt resLayer2 = controller.layer2(resLayer1);
+            Ctxt resLayer3 = controller.layer3(resLayer2);
+            
+            int pred_label = controller.classificationLayerGetLabel(resLayer3);
+            
+            if(pred_label == true_label) correct++;
+                        
+            cout << "Image " << idx << ": True=" << true_label 
+                 << ", Pred=" << pred_label 
+                 << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
+
+            tools::print_duration(start_for_pic, "Image " + to_string(idx));
+        }
+        
+        tools::print_average_duration(start, "Average time:", test_num);
+
+        cout << "\n========================================" << endl;
+        cout << "Total: " << total << ", Correct: " << correct << endl;
+        cout << "Accuracy: " << (100.0 * correct / total) << "%" << endl;
+        cout << "========================================" << endl;
+        
+        return 0;
+    }
+    
     Ctxt firstLayer, resLayer1, resLayer2, resLayer3, finalRes;
 
     vector<double> input_image = read_image(input_filename.c_str());
@@ -178,6 +225,11 @@ void check_arguments(int argc, char *argv[])
         else if(string(argv[i])=="input"){
             if(i+1<argc)
                 input_filename="../"+string(argv[i+1]);               
+        }
+        else if(string(argv[i])=="test") {
+        test_mode = true;
+        if(i+1 < argc)
+            test_num = stoi(string(argv[i+1]));
         }
     }
 }
