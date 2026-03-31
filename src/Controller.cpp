@@ -989,7 +989,7 @@ Ctxt Controller::layer1(const Ctxt& c, int verbose)//三层basicblock
     scale = 0.36;
 
     res2=convbn(res2,2,2, config, scale, verbose > 1);
-    res2=Add(res2,Mul(c,scale));
+    res2=Add(res2,Mul(res1,scale));
     res2=bootstrap(res2,verbose>1);
     res2=relu(res2, scale, verbose > 1);
 
@@ -1006,7 +1006,7 @@ Ctxt Controller::layer1(const Ctxt& c, int verbose)//三层basicblock
     scale = 0.42;
 
     res3=convbn(res3,3,2, config, scale, verbose > 1);
-    res3=Add(res3,Mul(c,scale));
+    res3=Add(res3,Mul(res2,scale));
     res3=bootstrap(res3,verbose>1);
     res3=relu(res3, scale, verbose > 1);
 
