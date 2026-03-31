@@ -1269,7 +1269,7 @@ int Controller::classificationLayerGetLabel(const Ctxt& c)
     vector<double> clear_result = Decode(res, 10);
 
     auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
-    return index_max = distance(clear_result.begin(), max_element_iterator);
+    return distance(clear_result.begin(), max_element_iterator);
 }
 
 void Controller::print(const Ctxt& c, int slots, string prefix)
