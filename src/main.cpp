@@ -92,50 +92,50 @@ int main(int argc, char *argv[])
         controller.loadContext(verbose > 1);
     }
 
-    if(test_mode) {
-        auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
+    // if(test_mode) {
+    //     auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
         
-        int correct = 0;
-        int total = test_images.size();
-        auto start =begin_time();
+    //     int correct = 0;
+    //     int total = test_images.size();
+    //     auto start =begin_time();
         
-        controller.load_bootstrapping_and_rotation_keys("rotations-layer1.bin", 16384);
+    //     controller.load_bootstrapping_and_rotation_keys("rotations-layer1.bin", 16384);
         
-        for(int idx = 0; idx < total; idx++) {
-            auto start_for_pic =begin_time();
+    //     for(int idx = 0; idx < total; idx++) {
+    //         auto start_for_pic =begin_time();
 
-            auto& img_data = test_images[idx];
-            int true_label = static_cast<int>(img_data.back());
-            img_data.pop_back(); 
+    //         auto& img_data = test_images[idx];
+    //         int true_label = static_cast<int>(img_data.back());
+    //         img_data.pop_back(); 
             
-            Ctxt c = controller.Encrypt(controller.Encode(img_data, 
-                controller.circuitDepth - 4 - relu_depth[controller.relu_degree]));
+    //         Ctxt c = controller.Encrypt(controller.Encode(img_data, 
+    //             controller.circuitDepth - 4 - relu_depth[controller.relu_degree]));
             
-            Ctxt firstLayer = controller.initLayer(c);
-            Ctxt resLayer1 = controller.layer1(firstLayer);
-            Ctxt resLayer2 = controller.layer2(resLayer1);
-            Ctxt resLayer3 = controller.layer3(resLayer2);
+    //         Ctxt firstLayer = controller.initLayer(c);
+    //         Ctxt resLayer1 = controller.layer1(firstLayer);
+    //         Ctxt resLayer2 = controller.layer2(resLayer1);
+    //         Ctxt resLayer3 = controller.layer3(resLayer2);
             
-            int pred_label = controller.classificationLayerGetLabel(resLayer3);
+    //         int pred_label = controller.classificationLayerGetLabel(resLayer3);
             
-            if(pred_label == true_label) correct++;
+    //         if(pred_label == true_label) correct++;
                         
-            cout << "Image " << idx << ": True=" << true_label 
-                 << ", Pred=" << pred_label 
-                 << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
+    //         cout << "Image " << idx << ": True=" << true_label 
+    //              << ", Pred=" << pred_label 
+    //              << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
 
-            tools::print_duration(start_for_pic, "Image " + to_string(idx));
-        }
+    //         tools::print_duration(start_for_pic, "Image " + to_string(idx));
+    //     }
         
-        tools::print_average_duration(start, "Average time:", test_num);
+    //     tools::print_average_duration(start, "Average time:", test_num);
 
-        cout << "\n========================================" << endl;
-        cout << "Total: " << total << ", Correct: " << correct << endl;
-        cout << "Accuracy: " << (100.0 * correct / total) << "%" << endl;
-        cout << "========================================" << endl;
+    //     cout << "\n========================================" << endl;
+    //     cout << "Total: " << total << ", Correct: " << correct << endl;
+    //     cout << "Accuracy: " << (100.0 * correct / total) << "%" << endl;
+    //     cout << "========================================" << endl;
         
-        return 0;
-    }
+    //     return 0;
+    // }
     
     Ctxt firstLayer, resLayer1, resLayer2, resLayer3, finalRes;
 

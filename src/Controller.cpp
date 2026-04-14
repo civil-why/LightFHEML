@@ -64,7 +64,10 @@ void Controller::generateContext(int logRing,int logScale,int logPrimes,int digi
 {
     CCParams<CryptoContextCKKSRNS> params;
 
-    params.SetBatchSize(1<<14);
+    slotNum = 1 << 14;
+    relu_degree=reluDeg;
+
+    params.SetBatchSize(slotNum);
     params.SetRingDim(1 << logRing);
     params.SetScalingModSize(1<<logScale);
     params.SetNumLargeDigits(digitsHks);
@@ -188,6 +191,7 @@ void Controller::generateBootstrappingAndRotationKeys(const vector<int>& rotatio
                                                         bool serialize,
                                                         const string& filename)
 {
+        if (serialize && filename.empty()) {return;}
     generateBootstrappingKeys(bootstrappingDepth);
     generateRotationKeys(rotations, serialize, filename);
     return;
@@ -195,6 +199,7 @@ void Controller::generateBootstrappingAndRotationKeys(const vector<int>& rotatio
 
 void Controller::generateBootstrappingKeys(int bootstrap_slots)
 {
+
     context->EvalBootstrapSetup(level_budget, {0, 0}, bootstrap_slots);
     context->EvalBootstrapKeyGen(keyPair.secretKey,bootstrap_slots);
     return;
@@ -202,6 +207,8 @@ void Controller::generateBootstrappingKeys(int bootstrap_slots)
 
 void Controller::generateRotationKeys(const vector<int>& rotations, bool serialize,string filename)
 {
+    if (serialize && filename.size() == 0) {return;}
+
     context->EvalRotateKeyGen(keyPair.secretKey, rotations);
 
     if (serialize) {
@@ -269,6 +276,10 @@ void Controller::clear_context() {
 
 Ptxt Controller::Encode(const vector<double> &vec,int level,int slot)
 {
+    if (slot == 0) {
+        slot = slotNum;
+    }
+
     Ptxt ptxt= context->MakeCKKSPackedPlaintext(vec,1,level,nullptr,slot);
     ptxt->SetLength(slot);
     return ptxt;
@@ -444,6 +455,7 @@ Ctxt Controller::convbn_initial(const Ctxt &c,double scale, bool timing)
         res = Add(res, context->EvalRotate(sum, 1024));
         res = Add(res, context->EvalRotate(context->EvalRotate(sum, 1024), 1024));
 
+        //掩码问题1
         MaskConfig mask_config;
         mask_config.type = MaskType::RANGE;
         mask_config.from = 0;
@@ -1293,7 +1305,7 @@ void Controller::print(const Ctxt& c, int slots, string prefix)
         if (v[i] > 0) {
             segno = " ";
         } else {
-            segno = "-";
+            segno = "-";//避免负数
             v[i] = -v[i];
         }
 
