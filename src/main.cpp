@@ -94,6 +94,9 @@ int main(int argc, char *argv[])
     }
 
     if(test_mode) {
+        controller.clear_context();
+        controller.loadContext(false);
+
         auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
         
         int correct = 0;

@@ -26,24 +26,6 @@ struct ConvConfig{
     int slot;               //slot数量，layer1为16384，layer2为8192，layer3为4096
 };
 
-enum class MaskType{FIRST_N,
-    LAST_N,
-    FIRST_N_OF_EVERY_2N,
-    PER_BLOCK_SLICE_32,
-    PER_BLOCK_SLICE_64,
-    SKIP_N_BLOCKS_THEN_256_32,
-    SKIP_N_BLOCKS_THEN_64_64,
-    EVERY_NTH,
-    RANGE};
-
-struct MaskConfig{
-    MaskType type;            //mask类型
-    int from;           //mask起始位置
-    int to;             //mask结束位置
-    int padding;        //mask填充长度
-    int pos;            //mask位置
-};
-
 class Controller //controller肯定是对整个系统的控制，密钥肯定是每次单独生成
 //读取图像不在controller中完成，controller只负责生成context，生成密钥，执行加密运算等功能
 {
@@ -112,7 +94,16 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         Ctxt classificationLayer(const Ctxt& c,string input_filename,int verbose=0);
 
         //掩码
-        Ptxt generateMask(int n,int level,MaskConfig config,double custom_val);
+        Ptxt gen_mask(int n, int level);
+        Ptxt mask_first_n(int n, int level);
+        Ptxt mask_second_n(int n, int level);
+        Ptxt mask_first_n_mod(int n, int padding, int pos, int level);
+        Ptxt mask_first_n_mod2(int n, int padding, int pos, int level);
+        Ptxt mask_channel(int n, int level);
+        Ptxt mask_channel_2(int n, int level);
+        Ptxt mask_from_to(int from, int to, int level);
+
+        Ptxt mask_mod(int n, int level, double custom_val);
 
         //杂项
         void bootstrap_precision(const Ctxt& c);

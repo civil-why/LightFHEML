@@ -454,15 +454,7 @@ Ctxt Controller::convbn_initial(const Ctxt &c,double scale, bool timing)
 
         res = Add(res, context->EvalRotate(sum, 1024));
         res = Add(res, context->EvalRotate(context->EvalRotate(sum, 1024), 1024));
-
-        //掩码问题1
-        MaskConfig mask_config;
-        mask_config.type = MaskType::RANGE;
-        mask_config.from = 0;
-        mask_config.to = 1024;
-
-        res = Mul(res, generateMask(0, res->GetLevel(), mask_config,0));
-
+        res = Mul(res, mask_from_to(0, 1024, res->GetLevel()));
 
         if (j == 0) {
             finalsum = res->Clone();
@@ -683,28 +675,18 @@ Ctxt Controller::downsample1024to256(const Ctxt &c1, const Ctxt &c2)
     c2->SetSlots(32768);
     slotNum = 16384*2;
 
-    MaskConfig config1,config2;
-    config1.type = MaskType::FIRST_N;
-    config2.type = MaskType::LAST_N;
-
     //c1的前半段和c2的后半段相加，综合成一个ctxt
-    Ctxt fullpack=Add(Mul(c1, generateMask(16384, c1->GetLevel(), config1, 0.0)), Mul(c2, generateMask(16384, c2->GetLevel(), config2, 0.0)));
+    Ctxt fullpack = Add(Mul(c1, mask_first_n(16384, c1->GetLevel())), Mul(c2, mask_second_n(16384, c2->GetLevel())));
 
-    MaskConfig temp;
-    temp.type=MaskType::FIRST_N_OF_EVERY_2N;
-    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 1)), generateMask(2, fullpack->GetLevel(),temp,0));
-    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(context->EvalRotate(fullpack, 1), 1)), generateMask(4, fullpack->GetLevel(),temp,0));
-    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 4)), generateMask(8, fullpack->GetLevel(),temp,0));
+    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 1)), gen_mask(2, fullpack->GetLevel()));
+    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(context->EvalRotate(fullpack, 1), 1)), gen_mask(4, fullpack->GetLevel()));
+    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 4)), gen_mask(8, fullpack->GetLevel()));
     fullpack = context->EvalAdd(fullpack, context->EvalRotate(fullpack, 8));
 
     Ctxt downsampledrows = Encrypt(Encode({0}));
 
     for (int i = 0; i < 16; i++) {
-        temp.type=MaskType::PER_BLOCK_SLICE_32;
-        temp.padding=1024;
-        temp.pos=i;
-
-        Ctxt masked = context->EvalMult(fullpack, generateMask(16,fullpack->GetLevel(),temp,0));
+        Ctxt masked = context->EvalMult(fullpack, mask_first_n_mod(16, 1024, i, fullpack->GetLevel()));
         downsampledrows = context->EvalAdd(downsampledrows, masked);
         if (i < 15) {
             fullpack = context->EvalRotate(fullpack, 64 - 16); 
@@ -714,8 +696,7 @@ Ctxt Controller::downsample1024to256(const Ctxt &c1, const Ctxt &c2)
     Ctxt downsampledchannels = Encrypt(Encode({0}));
 
     for (int i = 0; i < 32; i++) {
-        temp.type=MaskType::SKIP_N_BLOCKS_THEN_256_32;
-        Ctxt masked = context->EvalMult(downsampledrows, generateMask(i, downsampledrows->GetLevel(),temp,0));
+        Ctxt masked = context->EvalMult(downsampledrows, mask_channel(i, downsampledrows->GetLevel()));
         downsampledchannels = context->EvalAdd(downsampledchannels, masked);
         downsampledchannels = context->EvalRotate(downsampledchannels, -(1024 - 256));
     }
@@ -736,25 +717,16 @@ Ctxt Controller::downsample256to64(const Ctxt &c1, const Ctxt &c2) {
     c2->SetSlots(16384);
     slotNum = 8192*2;
 
-    MaskConfig config1,config2;
-    config1.type = MaskType::FIRST_N;
-    config2.type = MaskType::LAST_N;
+    Ctxt fullpack = Add(Mul(c1, mask_first_n(8192, c1->GetLevel())), Mul(c2, mask_second_n(8192, c2->GetLevel())));
 
-    Ctxt fullpack = Add(Mul(c1, generateMask(8192, c1->GetLevel(), config1, 0.0)), Mul(c2, generateMask(8192, c2->GetLevel(), config2, 0.0)));
-
-    MaskConfig temp;
-    temp.type=MaskType::FIRST_N_OF_EVERY_2N;
-    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 1)), generateMask(2, fullpack->GetLevel(),temp,0));
-    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(context->EvalRotate(fullpack, 1), 1)), generateMask(4, fullpack->GetLevel(),temp,0));
+    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 1)), gen_mask(2, fullpack->GetLevel()));
+    fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(context->EvalRotate(fullpack, 1), 1)), gen_mask(4, fullpack->GetLevel()));
     fullpack = context->EvalAdd(fullpack, context->EvalRotate(fullpack, 4));
 
     Ctxt downsampledrows = Encrypt(Encode({0}));
 
     for (int i = 0; i < 32; i++) {
-        temp.type=MaskType::PER_BLOCK_SLICE_64;
-        temp.padding=256;
-        temp.pos=i;
-        Ctxt masked = context->EvalMult(fullpack, generateMask(8,fullpack->GetLevel(),temp,0));
+        Ctxt masked = context->EvalMult(fullpack, mask_first_n_mod2(8, 256, i, fullpack->GetLevel()));
         downsampledrows = context->EvalAdd(downsampledrows, masked);
         if (i < 31) {
             fullpack = context->EvalRotate(fullpack, 32 - 8);
@@ -763,8 +735,7 @@ Ctxt Controller::downsample256to64(const Ctxt &c1, const Ctxt &c2) {
 
     Ctxt downsampledchannels = Encrypt(Encode({0}));
     for (int i = 0; i < 64; i++) {
-        temp.type=MaskType::SKIP_N_BLOCKS_THEN_64_64;
-        Ctxt masked = context->EvalMult(downsampledrows, generateMask(i, downsampledrows->GetLevel(),temp,0));
+        Ctxt masked = context->EvalMult(downsampledrows, mask_channel_2(i, downsampledrows->GetLevel()));
         downsampledchannels = context->EvalAdd(downsampledchannels, masked);
         downsampledchannels = context->EvalRotate(downsampledchannels, -(256 - 64));
     }
@@ -804,151 +775,168 @@ Ctxt Controller::repeat(const Ctxt &in, int slots) {
 }
 
 
-Ptxt Controller::generateMask(int n,int level,MaskConfig config,double custom_val)
-{
+Ptxt Controller::gen_mask(int n, int level) {
     vector<double> mask;
 
-    switch(config.type){
-    case MaskType::FIRST_N://前n个有效
-        {
-            for (int i = 0; i < slotNum; i++) {
-                if (i < n) {
-                    mask.push_back(1);
-                } else {
-                    mask.push_back(0);
-                }
-            }
-            return Encode(mask, level, slotNum);
-        }
-    case MaskType::LAST_N://后n个有效
-        {
-            for (int i = 0; i < slotNum; i++) {
-                if (i >= n) {
-                    mask.push_back(1);
-                } else {
-                    mask.push_back(0);
-                }
-            }
-            return Encode(mask, level, slotNum);
-        }
-    case MaskType::FIRST_N_OF_EVERY_2N://每2n个的前n个有效
-        {
-            int copy_interval = n;
-            for (int i = 0; i < slotNum; i++) {    
-                if (copy_interval > 0) {    
-                    mask.push_back(1);
-                } else {
-                    mask.push_back(0);
-                }
+    int copy_interval = n;
 
-                copy_interval--;
-
-                if (copy_interval <= -n) {
-                    copy_interval = n;
-                }
-            }
-            return Encode(mask, level, slotNum);
+    for (int i = 0; i < slotNum; i++) {
+        if (copy_interval > 0) {
+            mask.push_back(1);
+        } else {
+            mask.push_back(0);
         }
-    case MaskType::PER_BLOCK_SLICE_32://每个块前n*pos个无效，中间n个有效，后续均无效，一个块共padding长，共32块
-        {
-            for (int i = 0; i < 32; i++) {
-                for (int j = 0; j < (config.pos * n); j++) {
-                    mask.push_back(0);
-                }
-                for (int j = 0; j < n; j++) {
-                    mask.push_back(1);
-                }
-                for (int j = 0; j < (config.padding - n - (config.pos * n)); j++) {
-                    mask.push_back(0);
-                }
-            }
-            return Encode(mask, level, 16384 * 2);
-        }
-    case MaskType::PER_BLOCK_SLICE_64://每个块前n*pos个无效，中间n个有效，后续均无效，一个块共padding长，共64块
-        {
-            for (int i = 0; i < 64; i++) {
-                for (int j = 0; j < (config.pos * n); j++) {
-                    mask.push_back(0);
-                }
-                for (int j = 0; j < n; j++) {
-                    mask.push_back(1);
-                }
-                for (int j = 0; j < (config.padding - n - (config.pos * n)); j++) {
-                    mask.push_back(0);
-                }
-            }
-            return Encode(mask, level, 8192 * 2);
-        }
-    case MaskType::SKIP_N_BLOCKS_THEN_256_32://共32个块，每个块32*32个数据，前1024*n无效，之后接256个有效，后续均无效
-        {
-            for (int i = 0; i < n; i++) {
-                for (int j = 0; j < 1024; j++) {
-                    mask.push_back(0);
-                }
-            }
 
-            for (int i = 0; i < 256; i++) {
-                mask.push_back(1);
-            }
+        copy_interval--;
 
-            for (int i = 0; i < 1024 - 256; i++) {
-                mask.push_back(0);
-            }
-
-            for (int i = 0; i < 31 - n; i++) {
-                for (int j = 0; j < 1024; j++) {
-                    mask.push_back(0);
-                }
-            }
-            return Encode(mask, level, 16384 * 2);
-        }
-    case MaskType::SKIP_N_BLOCKS_THEN_64_64://共64个块，每个块16*16个数据，前256*n无效，之后接64个有效，后续均无效
-        {
-            for (int i = 0; i < n; i++) {
-                for (int j = 0; j < 256; j++) {
-                    mask.push_back(0);
-                }
-            }
-
-            for (int i = 0; i < 64; i++) {
-                mask.push_back(1);
-            }
-
-            for (int i = 0; i < 256 - 64; i++) {
-                mask.push_back(0);
-            }
-
-            for (int i = 0; i < 63 - n; i++) {
-                for (int j = 0; j < 256; j++) {
-                    mask.push_back(0);
-                }
-            }
-            return Encode(mask, level, 8192 * 2);
-        }
-    case MaskType::EVERY_NTH://每个n个数据进行一次缩放，其他均无效
-        {
-            for (int i = 0; i < slotNum; i++) {
-                if (i % n == 0) {
-                    mask.push_back(custom_val);
-                } else {
-                    mask.push_back(0);
-                }
-            } 
-            return Encode(mask, level, slotNum);
-        }
-    case MaskType::RANGE://从from到to有效
-        {
-            for (int i = 0; i < slotNum; i++) {
-                if (i >= config.from && i < config.to) {
-                    mask.push_back(1);
-                } else {
-                    mask.push_back(0);
-                }
-            }
-            return Encode(mask, level, slotNum);
+        if (copy_interval <= -n) {
+            copy_interval = n;
         }
     }
-    return Encode({0});
+
+    return Encode(mask, level, slotNum);
+}
+
+Ptxt Controller::mask_first_n(int n, int level) {
+    vector<double> mask;
+
+    for (int i = 0; i < slotNum; i++) {
+        if (i < n) {
+            mask.push_back(1);
+        } else {
+            mask.push_back(0);
+        }
+    }
+
+    return Encode(mask, level, slotNum);
+}
+
+Ptxt Controller::mask_second_n(int n, int level) {
+    vector<double> mask;
+
+    for (int i = 0; i < slotNum; i++) {
+        if (i >= n) {
+            mask.push_back(1);
+        } else {
+            mask.push_back(0);
+        }
+    }
+
+    return Encode(mask, level, slotNum);
+}
+
+Ptxt Controller::mask_first_n_mod(int n, int padding, int pos, int level) {
+    vector<double> mask;
+    for (int i = 0; i < 32; i++) {
+        for (int j = 0; j < (pos * n); j++) {
+            mask.push_back(0);
+        }
+        for (int j = 0; j < n; j++) {
+            mask.push_back(1);
+        }
+        for (int j = 0; j < (padding - n - (pos * n)); j++) {
+            mask.push_back(0);
+        }
+    }
+
+    return Encode(mask, level, 16384 * 2);
+}
+
+Ptxt Controller::mask_first_n_mod2(int n, int padding, int pos, int level) {
+    vector<double> mask;
+    for (int i = 0; i < 64; i++) {
+        for (int j = 0; j < (pos * n); j++) {
+            mask.push_back(0);
+        }
+        for (int j = 0; j < n; j++) {
+            mask.push_back(1);
+        }
+        for (int j = 0; j < (padding - n - (pos * n)); j++) {
+            mask.push_back(0);
+        }
+    }
+
+    return Encode(mask, level, 8192 * 2);
+}
+
+Ptxt Controller::mask_channel(int n, int level) {
+    vector<double> mask;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < 1024; j++) {
+            mask.push_back(0);
+        }
+    }
+
+    for (int i = 0; i < 256; i++) {
+        mask.push_back(1);
+    }
+
+    for (int i = 0; i < 1024 - 256; i++) {
+        mask.push_back(0);
+    }
+
+    for (int i = 0; i < 31 - n; i++) {
+        for (int j = 0; j < 1024; j++) {
+            mask.push_back(0);
+        }
+    }
+
+    return Encode(mask, level, 16384 * 2);
+}
+
+Ptxt Controller::mask_channel_2(int n, int level) {
+    vector<double> mask;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < 256; j++) {
+            mask.push_back(0);
+        }
+    }
+
+    for (int i = 0; i < 64; i++) {
+        mask.push_back(1);
+    }
+
+    for (int i = 0; i < 256 - 64; i++) {
+        mask.push_back(0);
+    }
+
+    for (int i = 0; i < 63 - n; i++) {
+        for (int j = 0; j < 256; j++) {
+            mask.push_back(0);
+        }
+    }
+
+    return Encode(mask, level, 8192 * 2);
+}
+
+Ptxt Controller::mask_mod(int n, int level, double custom_val) {
+    vector<double> vec;
+
+    for (int i = 0; i < slotNum; i++) {
+        if (i % n == 0) {
+            vec.push_back(custom_val);
+        } else {
+            vec.push_back(0);
+        }
+    }
+
+    return Encode(vec, level, slotNum);
+}
+
+Ptxt Controller::mask_from_to(int from, int to, int level) {
+    vector<double> vec;
+
+    for (int i = 0; i < slotNum; i++) {
+        if (i >= from && i < to) {
+            vec.push_back(1);
+        } else {
+            vec.push_back(0);
+        }
+    }
+
+    return Encode(vec, level, slotNum);
 }
 
  Ctxt Controller::initLayer(const Ctxt& c, int verbose)//一层convbn一层relu
@@ -1227,9 +1215,8 @@ Ctxt Controller::classificationLayer(const Ctxt& c,string input_filename,int ver
 
     Ctxt res = rotsum(c, 64);
 
-    MaskConfig config;
-    config.type=MaskType::EVERY_NTH;
-    res = Mul(res, generateMask(64, res->GetLevel(),config, 1.0 / 64.0));
+   
+    res = Mul(res,mask_mod(64, res->GetLevel(), 1.0 / 64.0));
 
     res = repeat(res, 16);
     res = Mul(res, weight);
