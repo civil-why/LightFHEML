@@ -1250,11 +1250,11 @@ Ctxt Controller::classificationLayer(const Ctxt& c,string input_filename,int ver
         cout << "The input image is classified as " << YELLOW_TEXT << tools::class_map[index_max] << RESET_COLOR << "" << endl;
         cout << "The index of max element is " << YELLOW_TEXT << index_max << RESET_COLOR << "" << endl;  
         
-        string command = "python3 ../src/plain/script.py \"" + input_filename + "\"";
-        int return_sys = system(command.c_str());
-        if (return_sys == 1) {
-            cout << "There was an error launching src/plain/script.py. Run it from Python in order to debug it." << endl;
-        }
+        // string command = "python3 ../src/plain/script.py \"" + input_filename + "\"";
+        // int return_sys = system(command.c_str());
+        // if (return_sys == 1) {
+        //     cout << "There was an error launching src/plain/script.py. Run it from Python in order to debug it." << endl;
+        // }
     }
 
     return res;

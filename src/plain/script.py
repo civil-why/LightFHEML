@@ -19,7 +19,7 @@ img = convert_tensor(img)
 img = img.unsqueeze(0)
 
 np.set_printoptions(precision=3)
-np.set_string_function(lambda x: repr(x), repr=False)
+np.set_printoptions(formatter={'all': lambda x: repr(x)})
 
 result = model(img)
 

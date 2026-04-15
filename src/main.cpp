@@ -226,9 +226,9 @@ void check_arguments(int argc, char *argv[])
                 input_filename="../"+string(argv[i+1]);               
         }
         else if(string(argv[i])=="test") {
-        test_mode = true;
-        if(i+1 < argc)
-            test_num = stoi(string(argv[i+1]));
+            test_mode = true;
+            if(i+1 < argc)
+                test_num = stoi(string(argv[i+1]));
         }
     }
 }
