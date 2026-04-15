@@ -1,117 +1,156 @@
 #include <iostream>
-#include <vector>
 #include <sys/stat.h>
+#include <fstream>
+#include <cstdint>
+#include <sys/resource.h>   
 
-#include "Controller.h"
+#include "FHEController.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-using namespace std;
+#define GREEN_TEXT "\033[1;32m"
+#define RED_TEXT "\033[1;31m"
+#define RESET_COLOR "\033[0m"
+
 
 void check_arguments(int argc, char *argv[]);
 vector<double> read_image(const char *filename);
-int excuteResNet20(vector<double> input_image);
 
-bool test_mode = false;
-int test_num = 100; 
-int context_version;
-int verbose;
+int executeResNet20(vector<double>& input_image);
+
+Ctxt initial_layer(const Ctxt& in);
+Ctxt layer1(const Ctxt& in);
+Ctxt layer2(const Ctxt& in);
+Ctxt layer3(const Ctxt& in);
+Ctxt final_layer(const Ctxt& in);
+
+FHEController controller;
+
+int generate_context;
 string input_filename;
-Controller controller;
+int verbose;
+bool test;
+bool plain;
+bool test_mode;
+int test_num=100;
 
-int main(int argc, char *argv[])
-{
+/*
+ * TODO:
+ * 1) Migliorare convbn sfruttando tutti gli slot del ciphertext 
+ * 通过充分利用密文的所有槽位来优化convbn
+ */
+
+int main(int argc, char *argv[]) {
+    //TODO: possibile che il bootstrap a 8192 ci metta lo stesso tempo? indaga
+    //有没有可能 8192 位的引导操作耗时是一样的？去查证一下。
+
     check_arguments(argc, argv);
 
-    if(context_version==-1){
-        cout << "You did not give me anything about the context version!" << endl;
+    if (test) {
+        controller.test_context();
+        exit(0);
+    }
+
+    if (generate_context == -1) {
+        cerr << "You either have to use the argument \"generate_keys\" or \"load_keys\"!\nIf it is your first time, you could try "
+                "with \"./LowMemoryFHEResNet20 generate_keys 1\"\nCheck the README.md.\nAborting. :-(" << endl;
         exit(1);
     }
-    if(context_version>0){
-        switch (context_version) {
+
+
+    if (generate_context > 0) {
+        switch (generate_context) {
             case 1:
-                controller.generateContext(16, 52, 48, 2, 3, 3, 59, true);
+                controller.generate_context(16, 52, 48, 2, 3, 3, 59, true);
                 break;
             case 2:
-                controller.generateContext(16, 50, 46, 3, 4, 4, 200, true);
+                controller.generate_context(16, 50, 46, 3, 4, 4, 200, true);
                 break;
             case 3:
-                controller.generateContext(16, 50, 46, 3, 5, 4, 119, true);
+                controller.generate_context(16, 50, 46, 3, 5, 4, 119, true);
                 break;
             case 4:
-                controller.generateContext(16, 48, 44, 2, 4, 4, 59, true);
+                controller.generate_context(16, 48, 44, 2, 4, 4, 59, true);
                 break;
             default:
-                controller.generateContext(true);//default context，按照ResNet20的参数设置
+                controller.generate_context(true);
                 break;
-            }
+        }
 
-        controller.generateBootstrappingAndRotationKeys({1, -1, 32, -32, -1024},
+        if (verbose > 1) cout << "Basic context built. Now generating bootstrapping and rotations keys..." << endl;
+
+        if (verbose > 1) cout << "(It may take a while, depending on the machine)" << endl;
+
+
+        controller.generate_bootstrapping_and_rotation_keys({1, -1, 32, -32, -1024},
                                                             16384,
                                                             true,
                                                             "rotations-layer1.bin");
-    
-        controller.clear_context();
-        controller.loadContext(false);
-        controller.generateRotationKeys({1, 2, 4, 8, 64-16, -(1024 - 256), (1024 - 256) * 32, -8192},
+        //After each serialization I release and re-load the context, otherwise OpenFHE gives a weird error (something
+        //like "4kb missing"), but I have no time to investigate :D
+        if (verbose > 1) cout << "1/6 done." << endl;
+        controller.clear_context(16384);
+        controller.load_context(false);
+        controller.generate_rotation_keys({1, 2, 4, 8, 64-16, -(1024 - 256), (1024 - 256) * 32, -8192},
                                           true,
                                           "rotations-layer2-downsample.bin");
-        
-
-        controller.clear_context();
-        controller.loadContext(false);
-        controller.generateBootstrappingAndRotationKeys({1, -1, 16, -16, -256},
+        if (verbose > 1) cout << "2/6 done." << endl;
+        controller.clear_context(0);
+        controller.load_context(false);
+        controller.generate_bootstrapping_and_rotation_keys({1, -1, 16, -16, -256},
                                           8192,
                                           true,
                                           "rotations-layer2.bin");
-    
-        controller.clear_context();
-        controller.loadContext(false);
-        controller.generateRotationKeys({1, 2, 4, 32 - 8, -(256 - 64), (256 - 64) * 64, -4096},
+        if (verbose > 1) cout << "3/6 done." << endl;
+        controller.clear_context(8192);
+        controller.load_context(false);
+        controller.generate_rotation_keys({1, 2, 4, 32 - 8, -(256 - 64), (256 - 64) * 64, -4096},
                                           true,
                                           "rotations-layer3-downsample.bin");
-        
-        controller.clear_context();
-        controller.loadContext(false);
-        controller.generateBootstrappingAndRotationKeys({1, -1, 8, -8, -64},
+        if (verbose > 1) cout << "4/6 done." << endl;
+        controller.clear_context(0);
+        controller.load_context(false);
+        controller.generate_bootstrapping_and_rotation_keys({1, -1, 8, -8, -64},
                                           4096,
                                           true,
                                           "rotations-layer3.bin");
-        
-        controller.clear_context();
-        controller.loadContext(false);
-        controller.generateRotationKeys({1, 2, 4, 8, 16, 32, -15, 64, 128, 256, 512, 1024, 2048}, true, "rotations-finallayer.bin");
+        if (verbose > 1)cout << "5/6 done." << endl;
+        controller.clear_context(4096);
+        controller.load_context(false);
+        controller.generate_rotation_keys({1, 2, 4, 8, 16, 32, -15, 64, 128, 256, 512, 1024, 2048}, true, "rotations-finallayer.bin");
+        if (verbose > 1) cout << "6/6 done!" << endl;
 
-        controller.clear_context();
-        controller.loadContext(false);
+        controller.clear_context(0);
+        controller.load_context(false);
 
         cout << "Context created correctly." << endl;
         exit(0);
 
     } else {
-        controller.loadContext(verbose > 1);
+        controller.load_context(verbose > 1);
     }
 
-    if(test_mode) {
 
-        auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
+     if(test_mode) {
+
+        auto test_images = read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
         
         int correct = 0;
         int total = test_images.size();
-        auto start =begin_time();
+        auto start =start_time();
                 
         for(int idx = 0; idx < total; idx++) {
-            controller.clear_context();
-            controller.loadContext(false);
-            auto start_for_pic =begin_time();
+            controller.clear_context(0);
+            controller.load_context(false);
+            auto start_for_pic =start_time();
 
             auto& img_data = test_images[idx];
             int true_label = static_cast<int>(img_data.back());
             img_data.pop_back(); 
             int pred_label = -1;
             try {
-                pred_label = excuteResNet20(img_data);
+                pred_label = executeResNet20(img_data);
             } catch (const exception& e) {
                 cerr << "Image " << idx << ": wrong prediction - " << e.what() << endl;
                 continue;
@@ -123,11 +162,11 @@ int main(int argc, char *argv[])
                  << ", Pred=" << pred_label 
                  << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
 
-            tools::print_duration(start_for_pic, "Image " + to_string(idx));
+            print_duration(start_for_pic, "Image " + to_string(idx));
         
         }
         
-        tools::print_average_duration(start, "Average time:", test_num);
+        print_average_duration(start, "Average time:", test_num);
 
         cout << "\n========================================" << endl;
         cout << "Total: " << total << ", Correct: " << correct << endl;
@@ -137,47 +176,81 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    excuteResNet20(read_image(input_filename.c_str()));
+    auto img_data = read_image(input_filename.c_str());
+    executeResNet20(img_data);
     return 0;
 }
 
-int excuteResNet20(vector<double> input_image){
+int executeResNet20(vector<double>& input_image) {
+    if (verbose >= 0) cout << "Encrypted ResNet20 classification started." << endl;
+
     Ctxt firstLayer, resLayer1, resLayer2, resLayer3, finalRes;
 
-    Ctxt c = controller.Encrypt(controller.Encode(input_image, controller.circuitDepth - 4 - relu_depth[controller.relu_degree]));
+    bool print_intermediate_values = false;
+    bool print_bootstrap_precision = false;
 
-    controller.load_bootstrapping_and_rotation_keys("rotations-layer1.bin", 16384);
+    if (verbose > 1) {
+        print_intermediate_values = true;
+        print_bootstrap_precision = true;
+    }
 
-    auto start =begin_time();
+    if (input_filename.empty()) {
+        input_filename = "../inputs/luis.png";
+        if (verbose >= 0) cout << "You did not set any input, I use " << GREEN_TEXT << "../inputs/luis.png" << RESET_COLOR << "." << endl;
+    } else {
+        if (verbose >= 0) cout << "I am going to encrypt and classify " << GREEN_TEXT<< input_filename << RESET_COLOR << "." << endl;
+    }
 
-    firstLayer = controller.initLayer(c);
-    if (verbose>1) controller.print(firstLayer, 16384, "Initial layer: ");
+    Ctxt in = controller.encrypt(input_image, controller.circuit_depth - 4 - get_relu_depth(controller.relu_degree));
 
-    auto startLayer = begin_time();
-    resLayer1 = controller.layer1(firstLayer);
+    controller.load_bootstrapping_and_rotation_keys("rotations-layer1.bin", 16384, verbose > 1);
+
+    if (print_bootstrap_precision){
+        controller.bootstrap_precision(controller.encrypt(input_image, controller.circuit_depth - 2));
+    }
+
+    auto start = start_time();
+
+    firstLayer = initial_layer(in);
+    if (print_intermediate_values) controller.print(firstLayer, 16384, "Initial layer: ");
+  
+    /*
+     * Layer 1: 16 channels of 32x32
+     */
+    auto startLayer = start_time();
+    resLayer1 = layer1(firstLayer);
     Serial::SerializeToFile("../checkpoints/layer1.bin", resLayer1, SerType::BINARY);
-    if (verbose>1) controller.print(resLayer1, 16384, "Layer 1: ");
-    if (verbose>0) print_duration(startLayer, "Layer 1 took:");
+    if (print_intermediate_values) controller.print(resLayer1, 16384, "Layer 1: ");
+    if (verbose > 0) print_duration(startLayer, "Layer 1 took:");
 
-    auto startLayer2 = begin_time();
-    resLayer2 = controller.layer2(resLayer1);
+    /*
+     * Layer 2: 32 channels of 16x16
+     */
+    startLayer = start_time();
+    Serial::DeserializeFromFile("../checkpoints/layer1.bin", resLayer1, SerType::BINARY);
+    resLayer2 = layer2(resLayer1);
     Serial::SerializeToFile("../checkpoints/layer2.bin", resLayer2, SerType::BINARY);
-    if (verbose>1) controller.print(resLayer2, 8192, "Layer 2: ");
-    if (verbose>0) print_duration(startLayer2, "Layer 2 took:");
+    if (print_intermediate_values) controller.print(resLayer2, 8192, "Layer 2: ");
+    if (verbose > 0) print_duration(startLayer, "Layer 2 took:");
 
-    auto startLayer3 = begin_time();
-    resLayer3 = controller.layer3(resLayer2);
+    /*
+     * Layer 2: 64 channels of 8x8
+     */
+    startLayer = start_time();
+    Serial::DeserializeFromFile("../checkpoints/layer2.bin", resLayer2, SerType::BINARY);
+    resLayer3 = layer3(resLayer2);
     Serial::SerializeToFile("../checkpoints/layer3.bin", resLayer3, SerType::BINARY);
-    if (verbose>1) controller.print(resLayer3, 4096, "Layer 3: ");
-    if (verbose>0) print_duration(startLayer3, "Layer 3 took:");
+    if (print_intermediate_values) controller.print(resLayer3, 4096, "Layer 3: ");
+    if (verbose > 0) print_duration(startLayer, "Layer 3 took:");
+
 
     Serial::DeserializeFromFile("../checkpoints/layer3.bin", resLayer3, SerType::BINARY);
-    finalRes = controller.classificationLayer(resLayer3,input_filename,verbose);
+    finalRes = final_layer(resLayer3);
     Serial::SerializeToFile("../checkpoints/finalres.bin", finalRes, SerType::BINARY);
 
     if (verbose > 0) print_duration_yellow(start, "The evaluation of the whole circuit took: ");
-
-    vector<double> clear_result = controller.Decode(finalRes,10);
+    
+    vector<double> clear_result = controller.decrypt_tovector(finalRes,10);
 
     auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
     int index_max = distance(clear_result.begin(), max_element_iterator);
@@ -185,62 +258,354 @@ int excuteResNet20(vector<double> input_image){
     return index_max;
 }
 
-void check_arguments(int argc, char *argv[])
-{
-    context_version=-1;
+Ctxt initial_layer(const Ctxt& in) {
+    double scale = 0.90; 
+
+    Ctxt res = controller.convbn_initial(in, scale, verbose > 1);
+    res = controller.relu(res, scale, verbose > 1);
+
+    return res;
+}
+
+Ctxt final_layer(const Ctxt& in) {
+    controller.clear_bootstrapping_and_rotation_keys(4096);
+    controller.load_rotation_keys("rotations-finallayer.bin", false);
+
+    controller.num_slots = 4096;
+
+    Ptxt weight = controller.encode(read_fc_weight("../weights/fc.bin"), in->GetLevel(), controller.num_slots);
+
+    Ctxt res = controller.rotsum(in, 64);
+    res = controller.mult(res, controller.mask_mod(64, res->GetLevel(), 1.0 / 64.0));
+
+    //From here, I need 10 repetitons, but I use 16 since *repeat* goes exponentially
+    res = controller.repeat(res, 16);
+    res = controller.mult(res, weight);
+    res = controller.rotsum_padded(res, 64);
+
+    if (verbose >= 0) {
+        cout << "Decrypting the output..." << endl;
+        controller.print(res, 10, "Output: ");
+    }
+
+    vector<double> clear_result = controller.decrypt_tovector(res, 10);
+
+    //Index of the max element
+    auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
+    int index_max = distance(clear_result.begin(), max_element_iterator);
+
+    if (verbose >= 0) {
+        cout << "The input image is classified as " << YELLOW_TEXT << utils::get_class(index_max) << RESET_COLOR << "" << endl;
+        cout << "The index of max element is " << YELLOW_TEXT << index_max << RESET_COLOR << "" << endl;
+        if (plain) {
+            string command = "python3 ../src/plain/script.py \"" + input_filename + "\"";
+            int return_sys = system(command.c_str());
+            if (return_sys == 1) {
+                cout << "There was an error launching src/plain/script.py. Run it from Python in order to debug it." << endl;
+            }
+        }
+    }
+
+
+    return res;
+}
+
+Ctxt layer3(const Ctxt& in) {
+    double scaleSx = 0.63;
+    double scaleDx = 0.40;
+
+    bool timing = verbose > 1;
+
+    if (verbose > 1) cout << "---Start: Layer3 - Block 1---" << endl;
+    auto start = start_time();
+    Ctxt boot_in = controller.bootstrap(in, timing);
+
+    vector<Ctxt> res1sx = controller.convbn3264sx(boot_in, 7, 1, scaleSx, timing); //Questo è lento
+    vector<Ctxt> res1dx = controller.convbn3264dx(boot_in, 7, 1, scaleDx, timing); //Questo è lento
+
+    controller.clear_bootstrapping_and_rotation_keys(8192);
+    controller.load_rotation_keys("rotations-layer3-downsample.bin", timing);
+
+    //N.B. questo downsampling usa un chain index in meno - posso accelerare convbn3264sx
+    Ctxt fullpackSx = controller.downsample256to64(res1sx[0], res1sx[1]);
+    Ctxt fullpackDx = controller.downsample256to64(res1dx[0], res1dx[1]);
+    res1sx.clear();
+    res1dx.clear();
+
+    controller.clear_rotation_keys();
+    controller.load_bootstrapping_and_rotation_keys("rotations-layer3.bin", 4096, verbose > 1);
+
+    controller.num_slots = 4096;
+    fullpackSx = controller.bootstrap(fullpackSx, timing);
+
+    fullpackSx = controller.relu(fullpackSx, scaleSx, timing);
+    fullpackSx = controller.convbn3(fullpackSx, 7, 2, scaleDx, timing);
+    Ctxt res1 = controller.add(fullpackSx, fullpackDx);
+    res1 = controller.bootstrap(res1, timing);
+    res1 = controller.relu(res1, scaleDx, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer3 - Block 1---" << endl;
+
+    double scale = 0.57;
+
+
+    if (verbose > 1) cout << "---Start: Layer3 - Block 2---" << endl;
+    start = start_time();
+    Ctxt res2;
+    res2 = controller.convbn3(res1, 8, 1, scale, timing);
+    res2 = controller.bootstrap(res2, timing);
+    res2 = controller.relu(res2, scale, timing);
+
+    scale = 0.33;
+
+    res2 = controller.convbn3(res2, 8, 2, scale, timing);
+    res2 = controller.add(res2, controller.mult(res1, scale));
+    res2 = controller.bootstrap(res2, timing);
+    res2 = controller.relu(res2, scale, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer3 - Block 2---" << endl;
+
+    scale = 0.69;
+
+    if (verbose > 1) cout << "---Start: Layer3 - Block 3---" << endl;
+    start = start_time();
+    Ctxt res3;
+
+    res3 = controller.convbn3(res2, 9, 1, scale, timing);
+    res3 = controller.bootstrap(res3, timing);
+    res3 = controller.relu(res3, scale, timing);
+
+    scale = 0.1;
+
+    res3 = controller.convbn3(res3, 9, 2, scale, timing);
+    res3 = controller.add(res3, controller.mult(res2, scale));
+    res3 = controller.bootstrap(res3, timing);
+    res3 = controller.relu(res3, scale, timing);
+    res3 = controller.bootstrap(res3, timing);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer3 - Block 3---" << endl;
+
+
+    return res3;
+}
+
+Ctxt layer2(const Ctxt& in) {
+
+    double scaleSx = 0.57;
+    double scaleDx = 0.40;
+
+    bool timing = verbose > 1;
+
+    if (verbose > 1) cout << "---Start: Layer2 - Block 1---" << endl;
+    auto start = start_time();
+    Ctxt boot_in = controller.bootstrap(in, timing);
+
+    vector<Ctxt> res1sx = controller.convbn1632sx(boot_in, 4, 1, scaleSx, timing); //Questo è lento
+
+    vector<Ctxt> res1dx = controller.convbn1632dx(boot_in, 4, 1, scaleDx, timing); //Questo è lento
+
+
+    controller.clear_bootstrapping_and_rotation_keys(16384);
+    controller.load_rotation_keys("rotations-layer2-downsample.bin", timing);
+
+    Ctxt fullpackSx = controller.downsample1024to256(res1sx[0], res1sx[1]);
+    Ctxt fullpackDx = controller.downsample1024to256(res1dx[0], res1dx[1]);
+
+
+    res1sx.clear();
+    res1dx.clear();
+
+    controller.clear_rotation_keys();
+    controller.load_bootstrapping_and_rotation_keys("rotations-layer2.bin", 8192, verbose > 1);
+
+    controller.num_slots = 8192;
+    fullpackSx = controller.bootstrap(fullpackSx, timing);
+
+    fullpackSx = controller.relu(fullpackSx, scaleSx, timing);
+
+    //I use the scale of the right branch since they will be added together
+    fullpackSx = controller.convbn2(fullpackSx, 4, 2, scaleDx, timing);
+    Ctxt res1 = controller.add(fullpackSx, fullpackDx);
+    res1 = controller.bootstrap(res1, timing);
+    res1 = controller.relu(res1, scaleDx, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer2 - Block 1---" << endl;
+
+    double scale = 0.76;
+
+    if (verbose > 1) cout << "---Start: Layer2 - Block 2---" << endl;
+    start = start_time();
+    Ctxt res2;
+    res2 = controller.convbn2(res1, 5, 1, scale, timing);
+    res2 = controller.bootstrap(res2, timing);
+    res2 = controller.relu(res2, scale, timing);
+
+    scale = 0.37;
+
+    res2 = controller.convbn2(res2, 5, 2, scale, timing);
+    res2 = controller.add(res2, controller.mult(res1, scale));
+    res2 = controller.bootstrap(res2, timing);
+    res2 = controller.relu(res2, scale, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer2 - Block 2---" << endl;
+
+    scale = 0.63;
+
+    if (verbose > 1) cout << "---Start: Layer2 - Block 3---" << endl;
+    start = start_time();
+    Ctxt res3;
+    res3 = controller.convbn2(res2, 6, 1, scale, timing);
+    res3 = controller.bootstrap(res3, timing);
+    res3 = controller.relu(res3, scale, timing);
+  
+    scale = 0.25;
+
+    res3 = controller.convbn2(res3, 6, 2, scale, timing);
+    res3 = controller.add(res3, controller.mult(res2, scale));
+    res3 = controller.bootstrap(res3, timing);
+    res3 = controller.relu(res3, scale, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer2 - Block 3---" << endl;
+
+    return res3;
+}
+
+Ctxt layer1(const Ctxt& in) {
+    bool timing = verbose > 1;
+    double scale = 1.00;
+
+
+    if (verbose > 1) cout << "---Start: Layer1 - Block 1---" << endl;
+    auto start = start_time();
+    Ctxt res1;
+    res1 = controller.convbn(in, 1, 1, scale, timing);
+    res1 = controller.bootstrap(res1, timing);
+    res1 = controller.relu(res1, scale, timing);
+
+    scale = 0.52;
+
+    res1 = controller.convbn(res1, 1, 2, scale, timing);
+    res1 = controller.add(res1, controller.mult(in, scale));
+    res1 = controller.bootstrap(res1, timing);
+    res1 = controller.relu(res1, scale, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer1 - Block 1---" << endl;
+
+    scale = 0.55;
+
+
+    if (verbose > 1) cout << "---Start: Layer1 - Block 2---" << endl;
+    start = start_time();
+    Ctxt res2;
+    res2 = controller.convbn(res1, 2, 1, scale, timing);
+    res2 = controller.bootstrap(res2, timing);
+    res2 = controller.relu(res2, scale, timing);
+
+    scale = 0.36;
+
+    res2 = controller.convbn(res2, 2, 2, scale, timing);
+    res2 = controller.add(res2, controller.mult(res1, scale));
+    res2 = controller.bootstrap(res2, timing);
+    res2 = controller.relu(res2, scale, timing);
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer1 - Block 2---" << endl;
+  
+    scale = 0.63;
+
+    if (verbose > 1) cout << "---Start: Layer1 - Block 3---" << endl;
+    start = start_time();
+    Ctxt res3;
+    res3 = controller.convbn(res2, 3, 1, scale, timing);
+    res3 = controller.bootstrap(res3, timing);
+    res3 = controller.relu(res3, scale, timing);
+
+    scale = 0.42;
+  
+    res3 = controller.convbn(res3, 3, 2, scale, timing);
+    res3 = controller.add(res3, controller.mult(res2, scale));
+    res3 = controller.bootstrap(res3, timing);
+    res3 = controller.relu(res3, scale, timing);
+
+    if (verbose > 1) print_duration(start, "Total");
+    if (verbose > 1) cout << "---End  : Layer1 - Block 3---" << endl;
+
+    return res3;
+}
+
+void check_arguments(int argc, char *argv[]) {
+    generate_context = -1;
+    verbose = 0;
 
     for (int i = 1; i < argc; ++i) {
+        //I first check the "verbose" command
         if (string(argv[i]) == "verbose") {
-            if (i + 1 < argc) { 
+            if (i + 1 < argc) { // Verifica se c'è un argomento successivo a "input"
                 verbose = atoi(argv[i + 1]);
             }
         }
     }
 
-    for(int i=1;i<argc;i++){
-        if(string(argv[i])=="load_keys"){
-            if(i+1<argc){
-                controller.controllerFolder="keys_"+string(argv[i+1]);
-                context_version=0;
-            }
-            else{
-                cout << "You need to specify the context version after \"load_keys\"!" << endl;
-                exit(1);
+
+    for (int i = 1; i < argc; ++i) {
+        if (string(argv[i]) == "load_keys") {
+            if (i + 1 < argc) {
+                controller.parameters_folder = "keys_exp" + string(argv[i + 1]);
+                if (verbose > 1) cout << "Context folder set to: \"" << controller.parameters_folder << "\"." << endl;
+                generate_context = 0;
             }
         }
-        else if(string(argv[i])=="generate_keys"){
-            if(i+1<argc){
-                context_version=stoi(string(argv[i+1]));
-                if (context_version==1||context_version==2||context_version==3||context_version==4)
-                {            
-                    controller.controllerFolder="keys_"+to_string(context_version);
+
+        if (string(argv[i]) == "test") {
+            test = true;
+        }
+
+        if (string(argv[i]) == "generate_keys") {
+            if (i + 1 < argc) {
+                string folder = "";
+                if (string(argv[i+1]) == "1") {
+                    folder = "keys_exp1";
+                    generate_context = 1;
+                } else if (string(argv[i+1]) == "2") {
+                    folder = "keys_exp2";
+                    generate_context = 2;
+                } else if (string(argv[i+1]) == "3") {
+                    folder = "keys_exp3";
+                    generate_context = 3;
+                } else if (string(argv[i+1]) == "4") {
+                    folder = "keys_exp4";
+                    generate_context = 4;
+                } else {
+                    cerr << "Set a proper value for 'generate_keys'. For instance, use '1'. Check the README.md" << endl;
+                    exit(1);
                 }
-                else{exit(1);}
-                
+
                 struct stat sb;
-                if (stat(("../keys_" + to_string(context_version)).c_str(), &sb) == 0) {
-                    cerr << "The keys folder \"" << "keys_"+to_string(context_version) << "\" already exists, I will abort.";
+                if (stat(("../" + folder).c_str(), &sb) == 0) {
+                    cerr << "The keys folder \"" << folder << "\" already exists, I will abort.";
                     exit(1);
                 }
                 else {
-                    mkdir(("../keys_"+to_string(context_version)).c_str(), 0777);
+                    mkdir(("../" + folder).c_str(), 0777);
                 }
+
+                controller.parameters_folder = folder;
+                if (verbose > 1) cout << "Context folder set to: \"" << controller.parameters_folder << "\"." << endl;
             }
-            else{
-                cout << "You need to specify the context version after \"generate_keys\"!" << endl;
-                exit(1);
+        }
+        if (string(argv[i]) == "input") {
+            if (i + 1 < argc) {
+                input_filename = "../" + string(argv[i + 1]);
+                if (verbose > 1) cout << "Input image set to: \"" << input_filename << "\"." << endl;
             }
         }
-        else if(string(argv[i])=="input"){
-            if(i+1<argc)
-                input_filename="../"+string(argv[i+1]);               
+
+        if (string(argv[i]) == "plain") {
+            plain = true;
         }
-        else if(string(argv[i])=="test") {
-            test_mode = true;
-            if(i+1 < argc)
-                test_num = stoi(string(argv[i+1]));
-        }
+
     }
+
 }
 
 vector<double> read_image(const char *filename) {
