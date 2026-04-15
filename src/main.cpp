@@ -94,8 +94,6 @@ int main(int argc, char *argv[])
     }
 
     if(test_mode) {
-        controller.clear_context();
-        controller.loadContext(false);
 
         auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
         
@@ -104,12 +102,20 @@ int main(int argc, char *argv[])
         auto start =begin_time();
                 
         for(int idx = 0; idx < total; idx++) {
+            controller.clear_context();
+            controller.loadContext(false);
             auto start_for_pic =begin_time();
 
             auto& img_data = test_images[idx];
             int true_label = static_cast<int>(img_data.back());
             img_data.pop_back(); 
-            int pred_label=excuteResNet20(img_data);
+            int pred_label = -1;
+            try {
+                pred_label = excuteResNet20(img_data);
+            } catch (const exception& e) {
+                cerr << "Image " << idx << ": wrong prediction - " << e.what() << endl;
+                continue;
+            }
             
             if(pred_label == true_label) correct++;
                         
@@ -118,6 +124,7 @@ int main(int argc, char *argv[])
                  << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
 
             tools::print_duration(start_for_pic, "Image " + to_string(idx));
+        
         }
         
         tools::print_average_duration(start, "Average time:", test_num);
