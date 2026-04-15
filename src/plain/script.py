@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 import sys
 
 if len(sys.argv) == 1:
-    print('Launch this script followed by a filename (e.g. \'plain.py "../inputs/luis.png"\')')
+    print('程序中缺少图像文件名 (例如： \'plain.py "../inputs/luis.png"\')')
     exit(0)
 
 import torch
@@ -24,4 +25,4 @@ result = model(img)
 
 result_list = my_formatted_list = list(np.around(result[0].detach().numpy(),3))
 
-print("Plain:  " + str(result_list))
+print("明文推理结果：  " + str(result_list))

@@ -110,7 +110,6 @@ class Controller //controller肯定是对整个系统的控制，密钥肯定是
         Ctxt layer2(const Ctxt& c, int verbose=0);
         Ctxt layer3(const Ctxt& c, int verbose=0);
         Ctxt classificationLayer(const Ctxt& c,string input_filename,int verbose=0);
-        int classificationLayerGetLabel(const Ctxt& c);
 
         //掩码
         Ptxt generateMask(int n,int level,MaskConfig config,double custom_val);

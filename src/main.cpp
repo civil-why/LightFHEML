@@ -11,6 +11,7 @@ using namespace std;
 
 void check_arguments(int argc, char *argv[]);
 vector<double> read_image(const char *filename);
+int excuteResNet20(vector<double> input_image);
 
 bool test_mode = false;
 int test_num = 100; 
@@ -92,54 +93,46 @@ int main(int argc, char *argv[])
         controller.loadContext(verbose > 1);
     }
 
-    // if(test_mode) {
-    //     auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
+    if(test_mode) {
+        auto test_images = tools::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
         
-    //     int correct = 0;
-    //     int total = test_images.size();
-    //     auto start =begin_time();
-        
-    //     controller.load_bootstrapping_and_rotation_keys("rotations-layer1.bin", 16384);
-        
-    //     for(int idx = 0; idx < total; idx++) {
-    //         auto start_for_pic =begin_time();
+        int correct = 0;
+        int total = test_images.size();
+        auto start =begin_time();
+                
+        for(int idx = 0; idx < total; idx++) {
+            auto start_for_pic =begin_time();
 
-    //         auto& img_data = test_images[idx];
-    //         int true_label = static_cast<int>(img_data.back());
-    //         img_data.pop_back(); 
+            auto& img_data = test_images[idx];
+            int true_label = static_cast<int>(img_data.back());
+            img_data.pop_back(); 
+            int pred_label=excuteResNet20(img_data);
             
-    //         Ctxt c = controller.Encrypt(controller.Encode(img_data, 
-    //             controller.circuitDepth - 4 - relu_depth[controller.relu_degree]));
-            
-    //         Ctxt firstLayer = controller.initLayer(c);
-    //         Ctxt resLayer1 = controller.layer1(firstLayer);
-    //         Ctxt resLayer2 = controller.layer2(resLayer1);
-    //         Ctxt resLayer3 = controller.layer3(resLayer2);
-            
-    //         int pred_label = controller.classificationLayerGetLabel(resLayer3);
-            
-    //         if(pred_label == true_label) correct++;
+            if(pred_label == true_label) correct++;
                         
-    //         cout << "Image " << idx << ": True=" << true_label 
-    //              << ", Pred=" << pred_label 
-    //              << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
+            cout << "Image " << idx << ": True=" << true_label 
+                 << ", Pred=" << pred_label 
+                 << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
 
-    //         tools::print_duration(start_for_pic, "Image " + to_string(idx));
-    //     }
+            tools::print_duration(start_for_pic, "Image " + to_string(idx));
+        }
         
-    //     tools::print_average_duration(start, "Average time:", test_num);
+        tools::print_average_duration(start, "Average time:", test_num);
 
-    //     cout << "\n========================================" << endl;
-    //     cout << "Total: " << total << ", Correct: " << correct << endl;
-    //     cout << "Accuracy: " << (100.0 * correct / total) << "%" << endl;
-    //     cout << "========================================" << endl;
+        cout << "\n========================================" << endl;
+        cout << "Total: " << total << ", Correct: " << correct << endl;
+        cout << "Accuracy: " << (100.0 * correct / total) << "%" << endl;
+        cout << "========================================" << endl;
         
-    //     return 0;
-    // }
-    
+        return 0;
+    }
+
+    excuteResNet20(read_image(input_filename.c_str()));
+    return 0;
+}
+
+int excuteResNet20(vector<double> input_image){
     Ctxt firstLayer, resLayer1, resLayer2, resLayer3, finalRes;
-
-    vector<double> input_image = read_image(input_filename.c_str());
 
     Ctxt c = controller.Encrypt(controller.Encode(input_image, controller.circuitDepth - 4 - relu_depth[controller.relu_degree]));
 
@@ -172,8 +165,14 @@ int main(int argc, char *argv[])
     finalRes = controller.classificationLayer(resLayer3,input_filename,verbose);
     Serial::SerializeToFile("../checkpoints/finalres.bin", finalRes, SerType::BINARY);
 
-
     if (verbose > 0) print_duration_yellow(start, "The evaluation of the whole circuit took: ");
+
+    vector<double> clear_result = controller.Decode(finalRes,10);
+
+    auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
+    int index_max = distance(clear_result.begin(), max_element_iterator);
+
+    return index_max;
 }
 
 void check_arguments(int argc, char *argv[])

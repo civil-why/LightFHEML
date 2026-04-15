@@ -1260,29 +1260,6 @@ Ctxt Controller::classificationLayer(const Ctxt& c,string input_filename,int ver
     return res;
 }
 
-int Controller::classificationLayerGetLabel(const Ctxt& c)
-{
-    clear_keys();
-    load_rotation_keys("rotations-finallayer.bin");
-
-    slotNum=4096;
-    Ptxt weight = Encode(read_fc_weight(), c->GetLevel(), slotNum); 
-
-    Ctxt res = rotsum(c, 64);
-
-    MaskConfig config;
-    config.type=MaskType::EVERY_NTH;
-    res = Mul(res, generateMask(64, res->GetLevel(),config, 1.0 / 64.0));
-
-    res = repeat(res, 16);
-    res = Mul(res, weight);
-    res = rotsum_padded(res, 64);
-
-    vector<double> clear_result = Decode(res, 10);
-
-    auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
-    return distance(clear_result.begin(), max_element_iterator);
-}
 
 void Controller::print(const Ctxt& c, int slots, string prefix)
 {

@@ -191,33 +191,33 @@ namespace tools {
     }
 
     static inline vector<vector<double>> read_cifar10_batch(string filename, int num_images = 1000) {
-    vector<vector<double>> images;
-    ifstream file(filename, ios::binary);
-    
-    if (!file.is_open()) {
-        cerr << "Cannot open " << filename << endl;
-        exit(1);
-    }
-    
-    for (int i = 0; i < num_images; i++) {
-        vector<double> image;
-        unsigned char label;
-        file.read((char*)&label, 1); // 读取标签
+        vector<vector<double>> images;
+        ifstream file(filename, ios::binary);
         
-        for (int j = 0; j < 3072; j++) {
-            unsigned char pixel;
-            file.read((char*)&pixel, 1);
-            // 归一化到[0,1]并调整通道顺序为R,G,B分开存储
-            image.push_back(static_cast<double>(pixel) / 255.0);
+        if (!file.is_open()) {
+            cerr << "Cannot open " << filename << endl;
+            exit(1);
         }
         
-        image.push_back(static_cast<double>(label));
-        images.push_back(image);
+        for (int i = 0; i < num_images; i++) {
+            vector<double> image;
+            unsigned char label;
+            file.read((char*)&label, 1); // 读取标签
+            
+            for (int j = 0; j < 3072; j++) {
+                unsigned char pixel;
+                file.read((char*)&pixel, 1);
+                // 归一化到[0,1]并调整通道顺序为R,G,B分开存储
+                image.push_back(static_cast<double>(pixel) / 255.0);
+            }
+            
+            image.push_back(static_cast<double>(label));
+            images.push_back(image);
+        }
+        
+        file.close();
+        return images;
     }
-    
-    file.close();
-    return images;
-}
 }
 
 #endif
