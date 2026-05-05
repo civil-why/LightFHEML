@@ -24,6 +24,7 @@ int main() {
     });
 
     svr.Post("/cipher_for_one", [](const httplib::Request& req, httplib::Response& res) {
+        std::cout<<"cipher_for_one"<<std::endl;
         if (!req.form.has_file("image")) {
             res.status = 400;
             res.set_content(R"({"error": "No image uploaded"})", "application/json");

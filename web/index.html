@@ -18,7 +18,6 @@
             min-height: 100vh;
             color: #1e293b;
         }
-        /* 侧边栏样式保持不变 */
         .sidebar {
             width: 280px;
             background: #ffffff;
@@ -111,10 +110,6 @@
             white-space: pre-wrap;
         }
         .flex-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-        .dev-note { background: #f9f9fc; border-radius: 18px; padding: 16px 20px; color: #526477; }
-        table { width: 100%; border-collapse: collapse; background: #fafcff; border-radius: 16px; overflow: hidden; }
-        th { background: #e9f0f9; color: #1e4a7a; padding: 12px 16px; text-align: left; font-weight: 600; }
-        td { padding: 12px 16px; border-bottom: 1px solid #eef2f6; }
         .true-label-input { margin-top: 16px; display: flex; align-items: center; gap: 12px; background: #f8fafc; padding: 12px 16px; border-radius: 20px; }
         .true-label-input label { font-weight: 500; color: #1e3a5f; }
         .true-label-input input { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 30px; width: 80px; text-align: center; }
@@ -123,537 +118,516 @@
         .stat-card { background: #f8fafc; border-radius: 20px; padding: 16px 24px; flex: 1; min-width: 150px; text-align: center; border: 1px solid #eef2f6; }
         .stat-card .value { font-size: 2rem; font-weight: 700; color: #1e4a7a; }
         .stat-card .label { color: #64748b; margin-top: 6px; }
+        .warning-text { color: #b45330; font-size: 0.8rem; margin-top: 4px; }
+        .file-info { line-height: 1.5; }
     </style>
 </head>
 <body>
-    <!-- 侧边栏 -->
-    <div class="sidebar">
-        <div class="school-badge">
-            <div class="school-name"><i class="fas fa-university"></i> 华南师范大学</div>
-            <div class="project-tag">计算机学院 · 毕业设计</div>
-            <div class="project-tag">全同态加密图像处理</div>
+<div class="sidebar">
+    <div class="school-badge">
+        <div class="school-name"><i class="fas fa-university"></i> 华南师范大学</div>
+        <div class="project-tag">计算机学院 · 毕业设计</div>
+        <div class="project-tag">全同态加密图像处理</div>
+    </div>
+    <div class="nav-menu">
+        <div class="nav-item active" data-panel="plain"><i class="fas fa-image"></i> 明文计算</div>
+        <div class="nav-item" data-panel="cipher"><i class="fas fa-lock"></i> 密文计算</div>
+        <div class="nav-item" data-panel="batch_plain"><i class="fas fa-chart-line"></i> 批量明文效率</div>
+        <div class="nav-item" data-panel="batch_cipher"><i class="fas fa-shield"></i> 批量密文计算</div>
+        <div style="padding: 0 16px 20px 16px;">
+            <button id="updateKeysBtn" class="btn" style="width: 100%; justify-content: center;"><i class="fas fa-key"></i> 更新密钥</button>
+            <div id="updateKeysMsg" style="font-size: 0.8rem; color: #64748b; margin-top: 8px; text-align: center;"></div>
         </div>
-        <div class="nav-menu">
-            <div class="nav-item active" data-panel="plain"><i class="fas fa-image"></i> 明文计算</div>
-            <div class="nav-item" data-panel="cipher"><i class="fas fa-lock"></i> 密文计算</div>
-            <div class="nav-item" data-panel="batch_plain"><i class="fas fa-chart-line"></i> 批量明文效率</div>
-            <div class="nav-item" data-panel="batch_cipher"><i class="fas fa-shield"></i> 批量密文计算</div>
-            <div style="padding: 0 16px 20px 16px;">
-                <button id="updateKeysBtn" class="btn" style="width: 100%; justify-content: center;"><i class="fas fa-key"></i> 更新密钥</button>
-                <div id="updateKeysMsg" style="font-size: 0.8rem; color: #64748b; margin-top: 8px; text-align: center;"></div>
-            </div>
-        </div>
-        <div class="sidebar-footer"><i class="far fa-copyright"></i> 2026 · SCNU</div>
+    </div>
+    <div class="sidebar-footer"><i class="far fa-copyright"></i> 2026 · SCNU</div>
+</div>
+
+<div class="main-content">
+    <div class="page-header">
+        <h1>FHE 图像处理平台</h1>
+        <div class="subhead">基于全同态加密的隐私保护图像运算</div>
     </div>
 
-    <div class="main-content">
-        <div class="page-header">
-            <h1>FHE 图像处理平台</h1>
-            <div class="subhead">基于全同态加密的隐私保护图像运算</div>
-        </div>
-
-        <!-- 明文计算板块 -->
-        <div id="panel-plain" class="panel active">
-            <div class="card">
-                <div class="card-title"><i class="fas fa-eye"></i> 明文图像推理</div>
-                <div class="upload-area" id="uploadArea"><i class="fas fa-cloud-upload-alt"></i><div class="hint">点击或拖拽上传图片</div><div class="spec">仅支持 PNG / JPG，尺寸 32×32</div></div>
-                <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg">
-                <div id="previewSection" style="display: none;">
-                    <div class="preview-container">
-                        <div class="preview-box"><img id="previewImg" src=""></div>
-                        <div class="file-info"><div class="filename" id="fileName"></div><div class="dimension" id="fileDimension"></div><div id="sizeWarning" class="warning-text"></div></div>
-                    </div>
-                </div>
-                <div class="progress-wrapper"><div class="progress-label"><span>计算进度</span><span id="plainProgressPercent">0%</span></div><progress id="plainProgressBar" value="0" max="100"></progress></div>
-                <div class="flex-row">
-                    <button class="btn btn-primary" id="plainComputeBtn" disabled><i class="fas fa-play"></i> 开始明文推理</button>
-                    <button class="btn" id="plainResetBtn"><i class="fas fa-redo-alt"></i> 重新上传</button>
-                </div>
-                <div style="margin-top: 28px;"><div style="font-weight:500; margin-bottom:10px;"><i class="fas fa-terminal"></i> 推理结果</div><div class="result-box" id="plainResult">等待计算...</div></div>
-            </div>
-        </div>
-
-        <!-- 密文计算板块（单张） -->
-        <div id="panel-cipher" class="panel">
-            <div class="card">
-                <div class="card-title"><i class="fas fa-shield-alt"></i> 密文图像计算（单张）</div>
-                <div class="upload-area" id="cipherUploadArea"><i class="fas fa-cloud-upload-alt"></i><div class="hint">点击或拖拽上传图片</div><div class="spec">32×32 PNG/JPG</div></div>
-                <input type="file" id="cipherFileInput" accept="image/png, image/jpeg, image/jpg">
-                <div id="cipherPreviewSection" style="display: none;">
-                    <div class="preview-container">
-                        <div class="preview-box"><img id="cipherPreviewImg" src=""></div>
-                        <div class="file-info"><div class="filename" id="cipherFileName"></div><div class="dimension" id="cipherFileDimension"></div><div id="cipherSizeWarning" class="warning-text"></div></div>
-                    </div>
-                </div>
-                <div class="true-label-input">
-                    <label><i class="fas fa-tag"></i> 真实标签 (可选, 0-9):</label>
-                    <input type="number" id="trueLabelInput" min="0" max="9" step="1" placeholder="留空则不验证">
-                </div>
-                <div class="progress-wrapper"><div class="progress-label"><span>密文计算进度</span><span id="cipherProgressPercent">0%</span></div><progress id="cipherProgressBar" value="0" max="100"></progress></div>
-                <div class="flex-row">
-                    <button class="btn btn-primary" id="cipherComputeBtn" disabled><i class="fas fa-lock"></i> 开始密文计算</button>
-                    <button class="btn" id="cipherResetBtn"><i class="fas fa-redo-alt"></i> 重新上传</button>
-                </div>
-                <div style="margin-top: 28px;"><div style="font-weight:500; margin-bottom:10px;"><i class="fas fa-terminal"></i> 密文计算结果</div><div class="result-box" id="cipherResult">等待计算...</div></div>
-            </div>
-        </div>
-
-
-        <div id="panel-batch_plain" class="panel">
-            <div class="card">
-                <div class="card-title"><i class="fas fa-chart-bar"></i> CIFAR-10 批量明文效率测试</div>
-                <div class="flex-row">
-                    <button class="btn btn-primary" id="startEfficiencyBtn"><i class="fas fa-play"></i> 开始效率测试</button>
-                    <button class="btn" id="resetEfficiencyBtn"><i class="fas fa-stop"></i> 重置</button>
-                </div>
-                <div class="progress-wrapper"><div class="progress-label"><span>测试进度</span><span id="efficiencyProgressPercent">0%</span></div><progress id="efficiencyProgressBar" value="0" max="100"></progress></div>
-                <div style="margin-top: 30px;"><h3 style="color:#1e3a5f;">测试指标</h3><table><thead><tr><th>指标</th><th>数值</th></tr></thead><tbody id="efficiencyTableBody"><tr><td colspan="2" style="padding:20px;text-align:center;">等待测试...</td></tr></tbody></table></div>
-                <div style="margin-top: 30px;"><h3 style="color:#1e3a5f;">性能折线图</h3><canvas id="efficiencyChart" width="400" height="200" style="max-height:250px;"></canvas></div>
-            </div>
-        </div>
-
-        <div id="panel-batch_cipher" class="panel">
-            <div class="card">
-                <div class="card-title"><i class="fas fa-shield-virus"></i> 批量密文计算 (CIFAR-10 测试)</div>
-                <p style="color: #475569;">点击按钮运行密文测试，评估同态推理的准确率、耗时和内存占用。</p>
-                <div class="flex-row" style="margin-bottom: 20px;">
-                    <button class="btn btn-primary" id="startBatchCipherBtn"><i class="fas fa-play"></i> 开始批量测试</button>
-                    <button class="btn" id="resetBatchCipherBtn"><i class="fas fa-stop"></i> 重置</button>
-                </div>
-                <div class="progress-wrapper">
-                    <div class="progress-label"><span>批量测试进度</span><span id="batchCipherProgressPercent">0%</span></div>
-                    <progress id="batchCipherProgressBar" value="0" max="100"></progress>
-                </div>
-                <!-- 统计卡片 -->
-                <div class="stats-grid" id="batchStats" style="display: none;">
-                    <div class="stat-card"><div class="value" id="batchTotal">-</div><div class="label">测试总数</div></div>
-                    <div class="stat-card"><div class="value" id="batchCorrect">-</div><div class="label">正确数</div></div>
-                    <div class="stat-card"><div class="value" id="batchAccuracy">-</div><div class="label">准确率 (%)</div></div>
-                    <div class="stat-card"><div class="value" id="batchAvgTime">-</div><div class="label">平均耗时 (ms)</div></div>
-                    <div class="stat-card"><div class="value" id="batchPeakMem">-</div><div class="label">内存峰值 (KB)</div></div>
-                </div>
-                <!-- 详细结果表格 -->
-                <div style="margin-top: 20px;">
-                    <h3 style="color:#1e3a5f;">每张图片详情</h3>
-                    <div class="scrollable-table">
-                        <table id="batchDetailsTable" style="display: none;">
-                            <thead>
-                                <tr>
-                                    <th>序号</th>
-                                    <th>真实标签</th>
-                                    <th>预测标签</th>
-                                    <th>是否正确</th>
-                                    <th>耗时 (ms)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="batchDetailsBody"></tbody>
-                        </table>
-                    </div>
-                    <div id="batchNoData" class="placeholder-message" style="text-align:center; padding:20px;">暂无数据，请点击“开始批量测试”</div>
+    <!-- 明文计算板块 -->
+    <div id="panel-plain" class="panel active">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-eye"></i> 明文图像推理</div>
+            <div class="upload-area" id="uploadArea"><i class="fas fa-cloud-upload-alt"></i><div class="hint">点击或拖拽上传图片</div><div class="spec">仅支持 PNG / JPG，尺寸 32×32</div></div>
+            <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg" style="display:none;">
+            <div id="previewSection" style="display: none;">
+                <div class="preview-container">
+                    <div class="preview-box"><img id="previewImg" src=""></div>
+                    <div class="file-info"><div class="filename" id="fileName"></div><div class="dimension" id="fileDimension"></div><div id="sizeWarning" class="warning-text"></div></div>
                 </div>
             </div>
+            <div class="progress-wrapper"><div class="progress-label"><span>计算进度</span><span id="plainProgressPercent">0%</span></div><progress id="plainProgressBar" value="0" max="100"></progress></div>
+            <div class="flex-row">
+                <button class="btn btn-primary" id="plainComputeBtn" disabled><i class="fas fa-play"></i> 开始明文推理</button>
+                <button class="btn" id="plainResetBtn"><i class="fas fa-redo-alt"></i> 重新上传</button>
+            </div>
+            <div style="margin-top: 28px;"><div style="font-weight:500; margin-bottom:10px;"><i class="fas fa-terminal"></i> 推理结果</div><div class="result-box" id="plainResult">等待计算...</div></div>
         </div>
     </div>
 
-    <script>
-        (function() {
-            // 导航切换
-            const navItems = document.querySelectorAll('.nav-item');
-            const panels = {
-                plain: document.getElementById('panel-plain'),
-                cipher: document.getElementById('panel-cipher'),
-                batch_plain: document.getElementById('panel-batch_plain'),
-                batch_cipher: document.getElementById('panel-batch_cipher')
-            };
-            navItems.forEach(item => {
-                item.addEventListener('click', () => {
-                    const panelId = item.dataset.panel;
-                    navItems.forEach(n => n.classList.remove('active'));
-                    item.classList.add('active');
-                    Object.values(panels).forEach(p => p.classList.remove('active'));
-                    if (panels[panelId]) panels[panelId].classList.add('active');
-                });
+    <!-- 单张密文计算板块 -->
+    <div id="panel-cipher" class="panel">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-shield-alt"></i> 密文图像计算（单张）</div>
+            <div class="upload-area" id="cipherUploadArea"><i class="fas fa-cloud-upload-alt"></i><div class="hint">点击或拖拽上传图片</div><div class="spec">32×32 PNG/JPG</div></div>
+            <input type="file" id="cipherFileInput" accept="image/png, image/jpeg, image/jpg" style="display:none;">
+            <div id="cipherPreviewSection" style="display: none;">
+                <div class="preview-container">
+                    <div class="preview-box"><img id="cipherPreviewImg" src=""></div>
+                    <div class="file-info"><div class="filename" id="cipherFileName"></div><div class="dimension" id="cipherFileDimension"></div><div id="cipherSizeWarning" class="warning-text"></div></div>
+                </div>
+            </div>
+            <div class="true-label-input">
+                <label><i class="fas fa-tag"></i> 真实标签 (可选, 0-9):</label>
+                <input type="number" id="trueLabelInput" min="0" max="9" step="1" placeholder="留空则不验证">
+            </div>
+            <div class="progress-wrapper"><div class="progress-label"><span>密文计算进度</span><span id="cipherProgressPercent">0%</span></div><progress id="cipherProgressBar" value="0" max="100"></progress></div>
+            <div class="flex-row">
+                <button class="btn btn-primary" id="cipherComputeBtn" disabled><i class="fas fa-lock"></i> 开始密文计算</button>
+                <button class="btn" id="cipherResetBtn"><i class="fas fa-redo-alt"></i> 重新上传</button>
+            </div>
+            <div style="margin-top: 28px;"><div style="font-weight:500; margin-bottom:10px;"><i class="fas fa-terminal"></i> 密文计算结果</div><div class="result-box" id="cipherResult">等待计算...</div></div>
+        </div>
+    </div>
+
+    <!-- 批量明文效率测试（内存折线图） -->
+    <div id="panel-batch_plain" class="panel">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-chart-bar"></i> CIFAR-10 批量明文效率测试</div>
+            <div class="flex-row">
+                <button class="btn btn-primary" id="startEfficiencyBtn"><i class="fas fa-play"></i> 开始效率测试</button>
+                <button class="btn" id="resetEfficiencyBtn"><i class="fas fa-stop"></i> 重置</button>
+            </div>
+            <div class="progress-wrapper"><div class="progress-label"><span>测试进度</span><span id="efficiencyProgressPercent">0%</span></div><progress id="efficiencyProgressBar" value="0" max="100"></progress></div>
+            <div style="margin-top: 30px;"><h3 style="color:#1e3a5f;">测试指标</h3><table><thead><tr><th>指标</th><th>数值</th> </thead><tbody id="efficiencyTableBody"><tr><td colspan="2" style="padding:20px;text-align:center;">等待测试...</td></tr></tbody></table></div>
+            <div style="margin-top: 30px;"><h3 style="color:#1e3a5f;">内存消耗曲线</h3><canvas id="efficiencyChart" width="400" height="200" style="max-height:250px;"></canvas></div>
+        </div>
+    </div>
+
+    <!-- 批量密文计算板块 -->
+    <div id="panel-batch_cipher" class="panel">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-shield-virus"></i> 批量密文计算 (CIFAR-10 测试)</div>
+            <p style="color: #475569;">点击按钮运行密文测试，评估同态推理的准确率、耗时和内存占用。</p>
+            <div class="flex-row" style="margin-bottom: 20px;">
+                <button class="btn btn-primary" id="startBatchCipherBtn"><i class="fas fa-play"></i> 开始批量测试</button>
+                <button class="btn" id="resetBatchCipherBtn"><i class="fas fa-stop"></i> 重置</button>
+            </div>
+            <div class="progress-wrapper">
+                <div class="progress-label"><span>批量测试进度</span><span id="batchCipherProgressPercent">0%</span></div>
+                <progress id="batchCipherProgressBar" value="0" max="100"></progress>
+            </div>
+            <div class="stats-grid" id="batchStats" style="display: none;">
+                <div class="stat-card"><div class="value" id="batchTotal">-</div><div class="label">测试总数</div></div>
+                <div class="stat-card"><div class="value" id="batchCorrect">-</div><div class="label">正确数</div></div>
+                <div class="stat-card"><div class="value" id="batchAccuracy">-</div><div class="label">准确率 (%)</div></div>
+                <div class="stat-card"><div class="value" id="batchAvgTime">-</div><div class="label">平均耗时 (ms)</div></div>
+                <div class="stat-card"><div class="value" id="batchPeakMem">-</div><div class="label">内存峰值 (KB)</div></div>
+            </div>
+            <div style="margin-top: 20px;">
+                <h3 style="color:#1e3a5f;">每张图片详情</h3>
+                <div class="scrollable-table">
+                    <table id="batchDetailsTable" style="display: none;">
+                        <thead><tr><th>序号</th><th>真实标签</th><th>预测标签</th><th>是否正确</th><th>耗时 (ms)</th></tr></thead>
+                        <tbody id="batchDetailsBody"></tbody>
+                    </table>
+                </div>
+                <div id="batchNoData" class="placeholder-message" style="text-align:center; padding:20px;">暂无数据，请点击“开始批量测试”</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // 导航切换
+        const navItems = document.querySelectorAll('.nav-item');
+        const panels = {
+            plain: document.getElementById('panel-plain'),
+            cipher: document.getElementById('panel-cipher'),
+            batch_plain: document.getElementById('panel-batch_plain'),
+            batch_cipher: document.getElementById('panel-batch_cipher')
+        };
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const panelId = item.dataset.panel;
+                navItems.forEach(n => n.classList.remove('active'));
+                item.classList.add('active');
+                Object.values(panels).forEach(p => p.classList.remove('active'));
+                if (panels[panelId]) panels[panelId].classList.add('active');
             });
+        });
 
-            // ---------- 明文计算板块 ----------
-            const uploadArea = document.getElementById('uploadArea');
-            const fileInput = document.getElementById('fileInput');
-            const previewSection = document.getElementById('previewSection');
-            const previewImg = document.getElementById('previewImg');
-            const fileNameSpan = document.getElementById('fileName');
-            const fileDimensionSpan = document.getElementById('fileDimension');
-            const sizeWarning = document.getElementById('sizeWarning');
-            const plainComputeBtn = document.getElementById('plainComputeBtn');
-            const plainResetBtn = document.getElementById('plainResetBtn');
-            const plainProgressBar = document.getElementById('plainProgressBar');
-            const plainProgressPercent = document.getElementById('plainProgressPercent');
-            const plainResultDiv = document.getElementById('plainResult');
-            let selectedFile = null, imageValid = false;
+        // ---------- 辅助函数：模拟进度 ----------
+        function simulateProgress(duration, bar, percentSpan, callback) {
+            let p = 0;
+            const step = 5;
+            const timer = setInterval(() => {
+                p += step;
+                if (p >= 100) { p = 100; bar.value = p; percentSpan.textContent = '100%'; clearInterval(timer); if(callback) callback(); }
+                else { bar.value = p; percentSpan.textContent = p + '%'; }
+            }, duration / (100/step));
+            return timer;
+        }
 
-            uploadArea.addEventListener('click', () => fileInput.click());
-            uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.borderColor = '#1e4a7a'; });
-            uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = '#cbd5e1'; });
-            uploadArea.addEventListener('drop', e => {
-                e.preventDefault(); uploadArea.style.borderColor = '#cbd5e1';
-                if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-            });
-            fileInput.addEventListener('change', e => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+        // ---------- 明文计算板块 ----------
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewSection = document.getElementById('previewSection');
+        const previewImg = document.getElementById('previewImg');
+        const fileNameSpan = document.getElementById('fileName');
+        const fileDimensionSpan = document.getElementById('fileDimension');
+        const sizeWarning = document.getElementById('sizeWarning');
+        const plainComputeBtn = document.getElementById('plainComputeBtn');
+        const plainResetBtn = document.getElementById('plainResetBtn');
+        const plainProgressBar = document.getElementById('plainProgressBar');
+        const plainProgressPercent = document.getElementById('plainProgressPercent');
+        const plainResultDiv = document.getElementById('plainResult');
+        let selectedFile = null, imageValid = false;
 
-            function handleFile(file) {
-                if (!file.type.startsWith('image/')) { alert('请选择图片文件'); return; }
-                selectedFile = file;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    previewImg.src = e.target.result;
-                    const img = new Image();
-                    img.onload = () => {
-                        fileDimensionSpan.textContent = `${img.width} × ${img.height}`;
-                        if (img.width === 32 && img.height === 32) {
-                            sizeWarning.textContent = '';
-                            imageValid = true;
-                            plainComputeBtn.disabled = false;
-                            uploadArea.classList.add('disabled');
-                        } else {
-                            sizeWarning.textContent = '⚠️ 图片尺寸必须为 32×32';
-                            imageValid = false;
-                            plainComputeBtn.disabled = true;
-                            uploadArea.classList.remove('disabled');
-                        }
-                    };
-                    img.src = e.target.result;
-                    fileNameSpan.textContent = file.name;
-                    previewSection.style.display = 'block';
-                };
-                reader.readAsDataURL(file);
-            }
-
-            plainResetBtn.addEventListener('click', () => {
-                fileInput.value = '';
-                selectedFile = null; imageValid = false;
-                previewSection.style.display = 'none';
-                plainComputeBtn.disabled = true;
-                plainProgressBar.value = 0; plainProgressPercent.textContent = '0%';
-                plainResultDiv.textContent = '等待计算...';
-                sizeWarning.textContent = '';
-                uploadArea.classList.remove('disabled');
-            });
-
-            function simulateProgress(duration, bar, percentSpan, callback) {
-                let p = 0;
-                const step = 5;
-                const timer = setInterval(() => {
-                    p += step;
-                    if (p >= 100) { p = 100; bar.value = p; percentSpan.textContent = '100%'; clearInterval(timer); if(callback) callback(); }
-                    else { bar.value = p; percentSpan.textContent = p + '%'; }
-                }, duration / (100/step));
-                return timer;
-            }
-
-            plainComputeBtn.addEventListener('click', async () => {
-                if (!selectedFile || !imageValid) { alert('请上传32×32图片'); return; }
-                plainProgressBar.value = 0; plainProgressPercent.textContent = '0%';
-                plainResultDiv.textContent = '正在处理...';
-                const formData = new FormData(); formData.append('image', selectedFile);
-                let timer = simulateProgress(5000, plainProgressBar, plainProgressPercent, null);
-                try {
-                    const res = await fetch('/plain_for_one', { method: 'POST', body: formData });
-                    clearInterval(timer);
-                    plainProgressBar.value = 100; plainProgressPercent.textContent = '100%';
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const data = await res.json();
-                    if (data.error) plainResultDiv.innerHTML = `<span style="color:#b45330;">错误: ${data.error}</span>`;
-                    else plainResultDiv.textContent = JSON.stringify(data, null, 2);
-                } catch (err) {
-                    clearInterval(timer);
-                    plainProgressBar.value = 0; plainProgressPercent.textContent = '0%';
-                    plainResultDiv.textContent = `请求失败: ${err.message}`;
-                }
-            });
-
-            // ---------- 批量明文效率测试 ----------
-            const startEffBtn = document.getElementById('startEfficiencyBtn');
-            const resetEffBtn = document.getElementById('resetEfficiencyBtn');
-            const effProgBar = document.getElementById('efficiencyProgressBar');
-            const effProgPercent = document.getElementById('efficiencyProgressPercent');
-            const effTableBody = document.getElementById('efficiencyTableBody');
-            const chartCtx = document.getElementById('efficiencyChart').getContext('2d');
-            let chartInstance = null;
-
-            function resetEfficiencyUI() {
-                effProgBar.value = 0; effProgPercent.textContent = '0%';
-                effTableBody.innerHTML = '<tr><td colspan="2" style="padding:20px;text-align:center;">等待测试...</td></tr>';
-                if(chartInstance) { chartInstance.destroy(); chartInstance = null; }
-            }
-            resetEffBtn.addEventListener('click', resetEfficiencyUI);
-
-            startEffBtn.addEventListener('click', async () => {
-                startEffBtn.disabled = true;
-                resetEfficiencyUI();
-                let p = 0;
-                const interval = setInterval(() => { p += 1; if(p>=95) p=95; effProgBar.value = p; effProgPercent.textContent = p+'%'; }, 600);
-                try {
-                    const res = await fetch('/plain_for_batch');
-                    clearInterval(interval);
-                    effProgBar.value = 100; effProgPercent.textContent = '100%';
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const data = await res.json();
-                    effTableBody.innerHTML = `
-                        <tr><td>测试图像数量</td><td>${data.total_images ?? 'N/A'}</td></tr>
-                        <tr><td>正确分类</td><td>${data.correct ?? 'N/A'}</td></tr>
-                        <tr><td>准确率</td><td>${data.accuracy ?? 'N/A'}%</td></tr>
-                        <tr><td>总时间</td><td>${data.total_time_sec ?? 'N/A'} 秒</td></tr>
-                        <tr><td>平均推理时间</td><td>${data.avg_time_ms_per_image ?? 'N/A'} 毫秒/张</td></tr>
-                        <tr><td>推理速度</td><td>${data.images_per_second ?? 'N/A'} 张/秒</td></tr>
-                        <tr><td>内存峰值</td><td>${data.memory_peak_mb ?? 'N/A'} MB</td></tr>
-                    `;
-                    let memoryData = data.memory_usage_list;
-                    const labels = Array.from({ length: memoryData.length }, (_, i) => i + 1);
-
-                    if(chartInstance) chartInstance.destroy();
-                    chartInstance = new Chart(chartCtx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: '内存消耗 (MB)',
-                            data: memoryData,
-                            borderColor: '#1e4a7a',
-                            backgroundColor: 'rgba(30, 74, 122, 0.1)',
-                            fill: true,
-                            tension: 0.3,
-                            pointRadius: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        scales: {
-                            x: { title: { display: true, text: '图像序号' } },
-                            y: { title: { display: true, text: '内存 (MB)' }, beginAtZero: true }
-                        }
-                    }
-                });
-                } catch (err) {
-                    clearInterval(interval);
-                    effProgBar.value = 0; effProgPercent.textContent = '0%';
-                    effTableBody.innerHTML = `<tr><td colspan="2" style="color:#b45330;">错误: ${err.message}</td></tr>`;
-                } finally { startEffBtn.disabled = false; }
-            });
-
-            // ---------- 单张密文计算 ----------
-            const cipherUploadArea = document.getElementById('cipherUploadArea');
-            const cipherFileInput = document.getElementById('cipherFileInput');
-            const cipherPreviewSection = document.getElementById('cipherPreviewSection');
-            const cipherPreviewImg = document.getElementById('cipherPreviewImg');
-            const cipherFileName = document.getElementById('cipherFileName');
-            const cipherFileDimension = document.getElementById('cipherFileDimension');
-            const cipherSizeWarning = document.getElementById('cipherSizeWarning');
-            const cipherComputeBtn = document.getElementById('cipherComputeBtn');
-            const cipherResetBtn = document.getElementById('cipherResetBtn');
-            const cipherProgressBar = document.getElementById('cipherProgressBar');
-            const cipherProgressPercent = document.getElementById('cipherProgressPercent');
-            const cipherResultDiv = document.getElementById('cipherResult');
-            const trueLabelInput = document.getElementById('trueLabelInput');
-            let cipherSelectedFile = null, cipherImageValid = false;
-
-            cipherUploadArea.addEventListener('click', () => cipherFileInput.click());
-            cipherUploadArea.addEventListener('dragover', e => { e.preventDefault(); cipherUploadArea.style.borderColor = '#1e4a7a'; });
-            cipherUploadArea.addEventListener('dragleave', () => { cipherUploadArea.style.borderColor = '#cbd5e1'; });
-            cipherUploadArea.addEventListener('drop', e => {
-                e.preventDefault(); cipherUploadArea.style.borderColor = '#cbd5e1';
-                if (e.dataTransfer.files.length) handleCipherFile(e.dataTransfer.files[0]);
-            });
-            cipherFileInput.addEventListener('change', () => { if (cipherFileInput.files.length) handleCipherFile(cipherFileInput.files[0]); });
-
-            function handleCipherFile(file) {
-                if (!file.type.startsWith('image/')) { alert('请选择图片文件'); return; }
-                cipherSelectedFile = file;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    cipherPreviewImg.src = e.target.result;
-                    const img = new Image();
-                    img.onload = () => {
-                        cipherFileDimension.textContent = `${img.width} × ${img.height}`;
-                        if (img.width === 32 && img.height === 32) {
-                            cipherSizeWarning.textContent = '';
-                            cipherImageValid = true;
-                            cipherComputeBtn.disabled = !isKeyReady;
-                            cipherUploadArea.classList.add('disabled');
-                        } else {
-                            cipherSizeWarning.textContent = '⚠️ 图片尺寸必须为 32×32';
-                            cipherImageValid = false;
-                            cipherComputeBtn.disabled = true;
-                            cipherUploadArea.classList.remove('disabled');
-                        }
-                    };
-                    img.src = e.target.result;
-                    cipherFileName.textContent = file.name;
-                    cipherPreviewSection.style.display = 'block';
-                };
-                reader.readAsDataURL(file);
-            }
-
-            cipherResetBtn.addEventListener('click', () => {
-                cipherFileInput.value = ''; cipherSelectedFile = null; cipherImageValid = false;
-                cipherPreviewSection.style.display = 'none';
-                cipherComputeBtn.disabled = true;
-                cipherProgressBar.value = 0; cipherProgressPercent.textContent = '0%';
-                cipherResultDiv.textContent = '等待计算...';
-                cipherSizeWarning.textContent = '';
-                cipherUploadArea.classList.remove('disabled');
-                trueLabelInput.value = '';
-            });
-
-            cipherComputeBtn.addEventListener('click', async () => {
-                if (!cipherSelectedFile || !cipherImageValid || !isKeyReady) { alert('请确保已上传32×32图片且密钥已就绪'); return; }
-                cipherProgressBar.value = 0; cipherProgressPercent.textContent = '0%';
-                cipherResultDiv.textContent = '正在执行密文计算...';
-                const formData = new FormData();
-                formData.append('image', cipherSelectedFile);
-                const trueLabel = trueLabelInput.value.trim();
-                if (trueLabel !== '' && !isNaN(parseInt(trueLabel))) {
-                    formData.append('true_label', parseInt(trueLabel));
-                }
-                let timer = simulateProgress(60000, cipherProgressBar, cipherProgressPercent, null);
-                try {
-                    const res = await fetch('/cipher_for_one', { method: 'POST', body: formData });
-                    clearInterval(timer);
-                    cipherProgressBar.value = 100; cipherProgressPercent.textContent = '100%';
-                    if (!res.ok) throw new Error(`服务器错误: ${res.status}`);
-                    const data = await res.json();
-                    if (data.error) {
-                        cipherResultDiv.innerHTML = `<span style="color:#b45330;">错误: ${data.error}</span>`;
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) { alert('请选择图片文件'); return; }
+            selectedFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+                const img = new Image();
+                img.onload = () => {
+                    fileDimensionSpan.textContent = `${img.width} × ${img.height}`;
+                    if (img.width === 32 && img.height === 32) {
+                        sizeWarning.textContent = '';
+                        imageValid = true;
+                        plainComputeBtn.disabled = false;
+                        uploadArea.classList.add('disabled');
                     } else {
-                        let html = `<strong>预测类别:</strong> ${data.prediction}`;
-                        if (data.correct !== undefined) html += `<br><strong>是否正确:</strong> ${data.correct ? '✓ 正确' : '✗ 错误'}`;
-                        if (data.time_ms !== undefined) html += `<br><strong>运行时间:</strong> ${data.time_ms.toFixed(2)} ms`;
-                        if (data.memory_delta_kb !== undefined) html += `<br><strong>内存增量:</strong> ${data.memory_delta_kb} KB`;
-                        cipherResultDiv.innerHTML = html;
+                        sizeWarning.textContent = '⚠️ 图片尺寸必须为 32×32';
+                        imageValid = false;
+                        plainComputeBtn.disabled = true;
+                        uploadArea.classList.remove('disabled');
                     }
-                } catch (err) {
-                    clearInterval(timer);
-                    cipherProgressBar.value = 0; cipherProgressPercent.textContent = '0%';
-                    cipherResultDiv.innerHTML = `<span style="color:#b45330;">请求失败: ${err.message}</span>`;
+                };
+                img.src = e.target.result;
+                fileNameSpan.textContent = file.name;
+                previewSection.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.borderColor = '#1e4a7a'; });
+        uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = '#cbd5e1'; });
+        uploadArea.addEventListener('drop', e => {
+            e.preventDefault(); uploadArea.style.borderColor = '#cbd5e1';
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', e => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+        plainResetBtn.addEventListener('click', () => {
+            fileInput.value = '';
+            selectedFile = null; imageValid = false;
+            previewSection.style.display = 'none';
+            plainComputeBtn.disabled = true;
+            plainProgressBar.value = 0; plainProgressPercent.textContent = '0%';
+            plainResultDiv.textContent = '等待计算...';
+            sizeWarning.textContent = '';
+            uploadArea.classList.remove('disabled');
+        });
+        plainComputeBtn.addEventListener('click', async () => {
+            if (!selectedFile || !imageValid) { alert('请上传32×32图片'); return; }
+            plainProgressBar.value = 0; plainProgressPercent.textContent = '0%';
+            plainResultDiv.textContent = '正在处理...';
+            const formData = new FormData(); formData.append('image', selectedFile);
+            let timer = simulateProgress(6000, plainProgressBar, plainProgressPercent, null);
+            try {
+                const res = await fetch('/plain_for_one', { method: 'POST', body: formData });
+                clearInterval(timer);
+                plainProgressBar.value = 100; plainProgressPercent.textContent = '100%';
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.error) plainResultDiv.innerHTML = `<span style="color:#b45330;">错误: ${data.error}</span>`;
+                else plainResultDiv.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                clearInterval(timer);
+                plainProgressBar.value = 0; plainProgressPercent.textContent = '0%';
+                plainResultDiv.textContent = `请求失败: ${err.message}`;
+            }
+        });
+
+        // ---------- 批量明文效率测试 ----------
+        const startEffBtn = document.getElementById('startEfficiencyBtn');
+        const resetEffBtn = document.getElementById('resetEfficiencyBtn');
+        const effProgBar = document.getElementById('efficiencyProgressBar');
+        const effProgPercent = document.getElementById('efficiencyProgressPercent');
+        const effTableBody = document.getElementById('efficiencyTableBody');
+        const chartCtx = document.getElementById('efficiencyChart').getContext('2d');
+        let chartInstance = null;
+        function resetEfficiencyUI() {
+            effProgBar.value = 0; effProgPercent.textContent = '0%';
+            effTableBody.innerHTML = '<tr><td colspan="2" style="padding:20px;text-align:center;">等待测试...</td></tr>';
+            if(chartInstance) { chartInstance.destroy(); chartInstance = null; }
+        }
+        resetEffBtn.addEventListener('click', resetEfficiencyUI);
+        startEffBtn.addEventListener('click', async () => {
+            startEffBtn.disabled = true;
+            resetEfficiencyUI();
+            let p = 0;
+            const interval = setInterval(() => { p += 1; if(p>=95) p=95; effProgBar.value = p; effProgPercent.textContent = p+'%'; }, 600);
+            try {
+                
+                const res = await fetch('/plain_for_batch', { method: 'POST' });
+                clearInterval(interval);
+                effProgBar.value = 100; effProgPercent.textContent = '100%';
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                effTableBody.innerHTML = `
+                    <tr><td>测试图像数量</td><td>${data.total_images ?? 'N/A'}</td></tr>
+                    <tr><td>正确分类</td><td>${data.correct ?? 'N/A'}</td></tr>
+                    <tr><td>准确率</td><td>${data.accuracy ?? 'N/A'}%</td></tr>
+                    <tr><td>总时间</td><td>${data.total_time_sec ?? 'N/A'} 秒</td></tr>
+                    <tr><td>平均推理时间</td><td>${data.avg_time_ms_per_image ?? 'N/A'} 毫秒/张</td></tr>
+                    <tr><td>推理速度</td><td>${data.images_per_second ?? 'N/A'} 张/秒</td></tr>
+                    <tr><td>内存峰值</td><td>${data.memory_peak_mb ?? 'N/A'} MB</td></tr>
+                `;
+                const memList = data.memory_usage_list || [];
+                if (memList.length && chartInstance) chartInstance.destroy();
+                if (memList.length) {
+                    const labels = memList.map((_, idx) => idx+1);
+                    chartInstance = new Chart(chartCtx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: '内存消耗 (MB)',
+                                data: memList,
+                                borderColor: '#1e4a7a',
+                                backgroundColor: 'rgba(30,74,122,0.1)',
+                                fill: true,
+                                tension: 0.3,
+                                pointRadius: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            scales: { x: { title: { display: true, text: '图像序号' } }, y: { title: { display: true, text: '内存 (MB)' }, beginAtZero: true } }
+                        }
+                    });
+                } else {
+                    if(chartInstance) chartInstance.destroy();
+                    chartCtx.canvas.getContext('2d').clearRect(0,0,chartCtx.canvas.width,chartCtx.canvas.height);
+                    chartCtx.fillStyle = '#aaa';
+                    chartCtx.font = '14px Inter';
+                    chartCtx.fillText('暂无内存数据', 20, 50);
                 }
-            });
+            } catch (err) {
+                clearInterval(interval);
+                effProgBar.value = 0; effProgPercent.textContent = '0%';
+                effTableBody.innerHTML = `<tr><td colspan="2" style="color:#b45330;">错误: ${err.message}</td></tr>`;
+            } finally { startEffBtn.disabled = false; }
+        });
 
-            // ---------- 批量密文计算 ----------
-            const startBatchCipherBtn = document.getElementById('startBatchCipherBtn');
-            const resetBatchCipherBtn = document.getElementById('resetBatchCipherBtn');
-            const batchCipherProgressBar = document.getElementById('batchCipherProgressBar');
-            const batchCipherProgressPercent = document.getElementById('batchCipherProgressPercent');
-            const batchStatsDiv = document.getElementById('batchStats');
-            const batchDetailsTable = document.getElementById('batchDetailsTable');
-            const batchDetailsBody = document.getElementById('batchDetailsBody');
-            const batchNoData = document.getElementById('batchNoData');
+        // ---------- 单张密文计算 ----------
+        const cipherUploadArea = document.getElementById('cipherUploadArea');
+        const cipherFileInput = document.getElementById('cipherFileInput');
+        const cipherPreviewSection = document.getElementById('cipherPreviewSection');
+        const cipherPreviewImg = document.getElementById('cipherPreviewImg');
+        const cipherFileName = document.getElementById('cipherFileName');
+        const cipherFileDimension = document.getElementById('cipherFileDimension');
+        const cipherSizeWarning = document.getElementById('cipherSizeWarning');
+        const cipherComputeBtn = document.getElementById('cipherComputeBtn');
+        const cipherResetBtn = document.getElementById('cipherResetBtn');
+        const cipherProgressBar = document.getElementById('cipherProgressBar');
+        const cipherProgressPercent = document.getElementById('cipherProgressPercent');
+        const cipherResultDiv = document.getElementById('cipherResult');
+        const trueLabelInput = document.getElementById('trueLabelInput');
+        let cipherSelectedFile = null, cipherImageValid = false;
 
-            function resetBatchUI() {
+        function handleCipherFile(file) {
+            if (!file.type.startsWith('image/')) { alert('请选择图片文件'); return; }
+            cipherSelectedFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                cipherPreviewImg.src = e.target.result;
+                const img = new Image();
+                img.onload = () => {
+                    cipherFileDimension.textContent = `${img.width} × ${img.height}`;
+                    if (img.width === 32 && img.height === 32) {
+                        cipherSizeWarning.textContent = '';
+                        cipherImageValid = true;
+                        cipherComputeBtn.disabled = !isKeyReady;
+                        cipherUploadArea.classList.add('disabled');
+                    } else {
+                        cipherSizeWarning.textContent = '⚠️ 图片尺寸必须为 32×32';
+                        cipherImageValid = false;
+                        cipherComputeBtn.disabled = true;
+                        cipherUploadArea.classList.remove('disabled');
+                    }
+                };
+                img.src = e.target.result;
+                cipherFileName.textContent = file.name;
+                cipherPreviewSection.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+        cipherUploadArea.addEventListener('click', () => cipherFileInput.click());
+        cipherUploadArea.addEventListener('dragover', e => { e.preventDefault(); cipherUploadArea.style.borderColor = '#1e4a7a'; });
+        cipherUploadArea.addEventListener('dragleave', () => { cipherUploadArea.style.borderColor = '#cbd5e1'; });
+        cipherUploadArea.addEventListener('drop', e => {
+            e.preventDefault(); cipherUploadArea.style.borderColor = '#cbd5e1';
+            if (e.dataTransfer.files.length) handleCipherFile(e.dataTransfer.files[0]);
+        });
+        cipherFileInput.addEventListener('change', () => { if (cipherFileInput.files.length) handleCipherFile(cipherFileInput.files[0]); });
+        cipherResetBtn.addEventListener('click', () => {
+            cipherFileInput.value = ''; cipherSelectedFile = null; cipherImageValid = false;
+            cipherPreviewSection.style.display = 'none';
+            cipherComputeBtn.disabled = true;
+            cipherProgressBar.value = 0; cipherProgressPercent.textContent = '0%';
+            cipherResultDiv.textContent = '等待计算...';
+            cipherSizeWarning.textContent = '';
+            cipherUploadArea.classList.remove('disabled');
+            trueLabelInput.value = '';
+        });
+        cipherComputeBtn.addEventListener('click', async () => {
+            if (!cipherSelectedFile || !cipherImageValid || !isKeyReady) { alert('请确保已上传32×32图片且密钥已就绪'); return; }
+            cipherProgressBar.value = 0; cipherProgressPercent.textContent = '0%';
+            cipherResultDiv.textContent = '正在执行密文计算 (预计 900 秒)...';
+            const formData = new FormData();
+            formData.append('image', cipherSelectedFile);
+            const trueLabel = trueLabelInput.value.trim();
+            if (trueLabel !== '' && !isNaN(parseInt(trueLabel))) formData.append('true_label', parseInt(trueLabel));
+            let timer = simulateProgress(900000, cipherProgressBar, cipherProgressPercent, null);
+            try {
+                const res = await fetch('/cipher_for_one', { method: 'POST', body: formData });
+                clearInterval(timer);
+                cipherProgressBar.value = 100; cipherProgressPercent.textContent = '100%';
+                if (!res.ok) throw new Error(`服务器错误: ${res.status}`);
+                const data = await res.json();
+                if (data.error) {
+                    cipherResultDiv.innerHTML = `<span style="color:#b45330;">错误: ${data.error}</span>`;
+                } else {
+                    let html = `<strong>预测类别:</strong> ${data.prediction}`;
+                    if (data.correct !== undefined) html += `<br><strong>是否正确:</strong> ${data.correct ? '✓ 正确' : '✗ 错误'}`;
+                    if (data.time_ms !== undefined) html += `<br><strong>运行时间:</strong> ${data.time_ms.toFixed(2)} ms`;
+                    if (data.memory_delta_kb !== undefined) html += `<br><strong>内存增量:</strong> ${data.memory_delta_kb} KB`;
+                    cipherResultDiv.innerHTML = html;
+                }
+            } catch (err) {
+                clearInterval(timer);
+                cipherProgressBar.value = 0; cipherProgressPercent.textContent = '0%';
+                cipherResultDiv.innerHTML = `<span style="color:#b45330;">请求失败: ${err.message}</span>`;
+            }
+        });
+
+        // ---------- 批量密文计算 ----------
+        const startBatchCipherBtn = document.getElementById('startBatchCipherBtn');
+        const resetBatchCipherBtn = document.getElementById('resetBatchCipherBtn');
+        const batchCipherProgressBar = document.getElementById('batchCipherProgressBar');
+        const batchCipherProgressPercent = document.getElementById('batchCipherProgressPercent');
+        const batchStatsDiv = document.getElementById('batchStats');
+        const batchDetailsTable = document.getElementById('batchDetailsTable');
+        const batchDetailsBody = document.getElementById('batchDetailsBody');
+        const batchNoData = document.getElementById('batchNoData');
+        function resetBatchUI() {
+            batchCipherProgressBar.value = 0;
+            batchCipherProgressPercent.textContent = '0%';
+            batchStatsDiv.style.display = 'none';
+            batchDetailsTable.style.display = 'none';
+            batchNoData.style.display = 'block';
+            batchDetailsBody.innerHTML = '';
+        }
+        resetBatchCipherBtn.addEventListener('click', resetBatchUI);
+        startBatchCipherBtn.addEventListener('click', async () => {
+            if (!isKeyReady) { alert('请先确保密钥已就绪（可点击更新密钥）'); return; }
+            startBatchCipherBtn.disabled = true;
+            resetBatchUI();
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 2;
+                if (progress >= 95) progress = 95;
+                batchCipherProgressBar.value = progress;
+                batchCipherProgressPercent.textContent = progress + '%';
+            }, 1000);
+            try {
+                const res = await fetch('/cipher_for_batch', { method: 'POST' });
+                clearInterval(progressInterval);
+                batchCipherProgressBar.value = 100;
+                batchCipherProgressPercent.textContent = '100%';
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.error) { alert(`批量测试失败: ${data.error}`); return; }
+                document.getElementById('batchTotal').textContent = data.total ?? '-';
+                document.getElementById('batchCorrect').textContent = data.correct ?? '-';
+                let accuracy = data.accuracy !== undefined ? data.accuracy.toFixed(2) : '-';
+                document.getElementById('batchAccuracy').textContent = accuracy;
+                document.getElementById('batchAvgTime').textContent = data.average_time_ms !== undefined ? data.average_time_ms.toFixed(2) : '-';
+                document.getElementById('batchPeakMem').textContent = data.peak_memory_kb ?? '-';
+                batchStatsDiv.style.display = 'flex';
+                if (data.details && Array.isArray(data.details) && data.details.length > 0) {
+                    batchDetailsBody.innerHTML = '';
+                    for (let i = 0; i < data.details.length; i++) {
+                        const item = data.details[i];
+                        const row = batchDetailsBody.insertRow();
+                        row.insertCell(0).textContent = i+1;
+                        row.insertCell(1).textContent = item.true_label !== undefined ? item.true_label : 'N/A';
+                        row.insertCell(2).textContent = item.pred_label !== undefined ? item.pred_label : 'N/A';
+                        row.insertCell(3).textContent = item.correct ? '✓' : '✗';
+                        row.insertCell(4).textContent = item.time_ms !== undefined ? item.time_ms.toFixed(2) : '-';
+                    }
+                    batchDetailsTable.style.display = 'table';
+                    batchNoData.style.display = 'none';
+                } else {
+                    batchNoData.textContent = '后端未返回详细数据，请检查 /cipher_for_batch 接口';
+                    batchNoData.style.display = 'block';
+                }
+            } catch (err) {
+                clearInterval(progressInterval);
                 batchCipherProgressBar.value = 0;
                 batchCipherProgressPercent.textContent = '0%';
-                batchStatsDiv.style.display = 'none';
-                batchDetailsTable.style.display = 'none';
-                batchNoData.style.display = 'block';
-                batchDetailsBody.innerHTML = '';
+                alert(`批量测试请求失败: ${err.message}`);
+            } finally {
+                startBatchCipherBtn.disabled = false;
             }
+        });
 
-            resetBatchCipherBtn.addEventListener('click', resetBatchUI);
-
-            startBatchCipherBtn.addEventListener('click', async () => {
-                if (!isKeyReady) { alert('请先确保密钥已就绪（可点击更新密钥）'); return; }
-                startBatchCipherBtn.disabled = true;
-                resetBatchUI();
-                // 模拟进度条（因为后端可能耗时较长）
-                let progress = 0;
-                const progressInterval = setInterval(() => {
-                    progress += 2;
-                    if (progress >= 95) progress = 95;
-                    batchCipherProgressBar.value = progress;
-                    batchCipherProgressPercent.textContent = progress + '%';
-                }, 1000);
-                try {
-                    const res = await fetch('/cipher_for_batch', { method: 'POST' });
-                    clearInterval(progressInterval);
-                    batchCipherProgressBar.value = 100;
-                    batchCipherProgressPercent.textContent = '100%';
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const data = await res.json();
-                    if (data.error) {
-                        alert(`批量测试失败: ${data.error}`);
-                        return;
-                    }
-                    // 填充统计卡片
-                    document.getElementById('batchTotal').textContent = data.total ?? '-';
-                    document.getElementById('batchCorrect').textContent = data.correct ?? '-';
-                    let accuracy = data.accuracy !== undefined ? data.accuracy.toFixed(2) : '-';
-                    document.getElementById('batchAccuracy').textContent = accuracy;
-                    document.getElementById('batchAvgTime').textContent = data.average_time_ms !== undefined ? data.average_time_ms.toFixed(2) : '-';
-                    document.getElementById('batchPeakMem').textContent = data.peak_memory_kb ?? '-';
-                    batchStatsDiv.style.display = 'flex';
-                    // 填充详情表格
-                    if (data.details && Array.isArray(data.details) && data.details.length > 0) {
-                        batchDetailsBody.innerHTML = '';
-                        for (let i = 0; i < data.details.length; i++) {
-                            const item = data.details[i];
-                            const row = batchDetailsBody.insertRow();
-                            row.insertCell(0).textContent = i+1;
-                            row.insertCell(1).textContent = item.true_label !== undefined ? item.true_label : 'N/A';
-                            row.insertCell(2).textContent = item.pred_label !== undefined ? item.pred_label : 'N/A';
-                            row.insertCell(3).textContent = item.correct ? '✓' : '✗';
-                            row.insertCell(4).textContent = item.time_ms !== undefined ? item.time_ms.toFixed(2) : '-';
-                        }
-                        batchDetailsTable.style.display = 'table';
-                        batchNoData.style.display = 'none';
-                    } else {
-                        batchNoData.textContent = '后端未返回详细数据，请检查 /cipher_for_batch 接口';
-                        batchNoData.style.display = 'block';
-                    }
-                } catch (err) {
-                    clearInterval(progressInterval);
-                    batchCipherProgressBar.value = 0;
-                    batchCipherProgressPercent.textContent = '0%';
-                    alert(`批量测试请求失败: ${err.message}`);
-                } finally {
-                    startBatchCipherBtn.disabled = false;
+        // ---------- 密钥更新 ----------
+        const updateKeysBtn = document.getElementById('updateKeysBtn');
+        const updateKeysMsg = document.getElementById('updateKeysMsg');
+        let isKeyReady = true;
+        function setCipherEnabled(enabled) {
+            cipherUploadArea.classList.toggle('disabled', !enabled);
+            if (!enabled) cipherComputeBtn.disabled = true;
+            else if (cipherSelectedFile && cipherImageValid) cipherComputeBtn.disabled = false;
+            else cipherComputeBtn.disabled = true;
+            startBatchCipherBtn.disabled = !enabled;
+        }
+        setCipherEnabled(true);
+        updateKeysBtn.addEventListener('click', async () => {
+            if (!confirm('密钥更新时间较长，期间不能使用密文推理。是否继续？')) return;
+            updateKeysBtn.disabled = true;
+            updateKeysMsg.textContent = '正在生成新密钥...';
+            setCipherEnabled(false);
+            isKeyReady = false;
+            try {
+                const response = await fetch('/update_keys', { method: 'GET' });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (data.status === 'success') {
+                    updateKeysMsg.innerHTML = '<span style="color:#10b981;">✓ 密钥更新成功</span>';
+                    isKeyReady = true;
+                    setCipherEnabled(true);
+                } else {
+                    updateKeysMsg.innerHTML = `<span style="color:#b45330;">✗ 更新失败: ${data.detail || '未知错误'}</span>`;
                 }
-            });
-
-            // ---------- 密钥更新 ----------
-            const updateKeysBtn = document.getElementById('updateKeysBtn');
-            const updateKeysMsg = document.getElementById('updateKeysMsg');
-            let isKeyReady = true;
-            function setCipherEnabled(enabled) {
-                cipherUploadArea.classList.toggle('disabled', !enabled);
-                if (!enabled) cipherComputeBtn.disabled = true;
-                else if (cipherSelectedFile && cipherImageValid) cipherComputeBtn.disabled = false;
-                else cipherComputeBtn.disabled = true;
-                startBatchCipherBtn.disabled = !enabled;
+            } catch (error) {
+                updateKeysMsg.innerHTML = `<span style="color:#b45330;">请求错误: ${error.message}</span>`;
+            } finally {
+                updateKeysBtn.disabled = false;
+                setTimeout(() => { updateKeysMsg.textContent = ''; }, 5000);
             }
-            setCipherEnabled(true);
-            updateKeysBtn.addEventListener('click', async () => {
-                if (!confirm('密钥更新时间较长，期间不能使用密文推理。是否继续？')) return;
-                updateKeysBtn.disabled = true;
-                updateKeysMsg.textContent = '正在生成新密钥...';
-                setCipherEnabled(false);
-                isKeyReady = false;
-                try {
-                    const response = await fetch('/update_keys');
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        updateKeysMsg.innerHTML = '<span style="color:#10b981;">✓ 密钥更新成功</span>';
-                        isKeyReady = true;
-                        setCipherEnabled(true);
-                    } else {
-                        updateKeysMsg.innerHTML = `<span style="color:#b45330;">✗ 更新失败: ${data.detail || '未知错误'}</span>`;
-                    }
-                } catch (error) {
-                    updateKeysMsg.innerHTML = `<span style="color:#b45330;">请求错误: ${error.message}</span>`;
-                } finally {
-                    updateKeysBtn.disabled = false;
-                    setTimeout(() => { updateKeysMsg.textContent = ''; }, 5000);
-                }
-            });
-        })();
-    </script>
+        });
+    })();
+</script>
 </body>
 </html>

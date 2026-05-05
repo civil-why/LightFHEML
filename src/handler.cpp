@@ -151,7 +151,7 @@ std::string handleCipherForOne(const std::string& imageData, const std::string& 
     auto start = std::chrono::steady_clock::now();
     long start_mem = utils::get_current_maxrss();   
     
-    // 调用 FHE 分类
+    
     int label = fhe_classify_image(reinterpret_cast<const unsigned char*>(imageData.data()), imageData.size());
     
     // 计算耗时
