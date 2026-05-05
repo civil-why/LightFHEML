@@ -107,6 +107,7 @@ std::string fhe_run_test(int test_num) {
 
 int fhe_classify_image(const unsigned char* img_data, size_t data_len) {
     std::lock_guard<std::mutex> lock(g_mutex);
+    std::cout<<"classify begin"<<std::endl;
     if (!g_initialized && fhe_init() != 0) return -1;
 
     std::string old_input_filename = input_filename;
@@ -135,7 +136,7 @@ int fhe_classify_image(const unsigned char* img_data, size_t data_len) {
 
 int fhe_generate_keys(int contextType) {
     std::lock_guard<std::mutex> lock(g_mutex);
-    
+    std::cout<<"generate keys begin"<<std::endl;
     string folder;
     switch (contextType) {
         case 1: folder = "keys_exp1"; break;
@@ -237,7 +238,7 @@ int fhe_load_keys(int exp_num) {
         std::cerr << "Keys folder \"" << folder << "\" does not exist. Generate keys first." << std::endl;
         return -1;
     }
-    
+    std::cout<<"load keys begin"<<std::endl;
     controller.parameters_folder = folder;
     if (verbose > 1) std::cout << "Loading keys from \"" << folder << "\"." << std::endl;
     
@@ -267,7 +268,7 @@ int fhe_test_context() {
 }
 
 int executeResNet20(vector<double>& input_image) {
-    if (verbose >= 0) cout << "Encrypted ResNet20 classification started." << endl;
+    cout << "Encrypted ResNet20 classification started." << endl;
 
     Ctxt firstLayer, resLayer1, resLayer2, resLayer3, finalRes;
 
