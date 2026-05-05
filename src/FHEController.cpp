@@ -1,7 +1,3 @@
-//
-// Created by Lorenzo on 24/10/23.
-//
-
 #include "FHEController.h"
 
 void FHEController::generate_context(bool serialize) {
@@ -11,8 +7,7 @@ void FHEController::generate_context(bool serialize) {
 
     parameters.SetSecretKeyDist(SPARSE_TERNARY);
     parameters.SetSecurityLevel(lbcrypto::HEStd_128_classic);
-    //parameters.SetSecurityLevel(lbcrypto::HEStd_NotSet);
-    parameters.SetNumLargeDigits(3); //d_{num} Se lo riduci, aumenti il logQP, se lo aumenti, aumenti memori
+    parameters.SetNumLargeDigits(3); 
     parameters.SetRingDim(1 << 16);
     parameters.SetBatchSize(num_slots);
 
@@ -20,9 +15,8 @@ void FHEController::generate_context(bool serialize) {
 
     ScalingTechnique rescaleTech = FLEXIBLEAUTO;
 
-    //55, 56 fa un bootstrap con precisione di 8.6
     int dcrtBits               = 47;
-    int firstMod               = 52; //45: 4.XX - 48: 7.84 - 51: 8.07:
+    int firstMod               = 52; 
 
     parameters.SetScalingModSize(dcrtBits);
     parameters.SetScalingTechnique(rescaleTech);
@@ -118,11 +112,10 @@ void FHEController::generate_context(int log_ring, int log_scale, int log_primes
     parameters.SetScalingTechnique(FLEXIBLEAUTO);
     parameters.SetFirstModSize(firstMod);
 
-    uint32_t approxBootstrapDepth = 4 + 4; //During EvalRaise, Chebyshev, DoubleAngle
+    uint32_t approxBootstrapDepth = 4 + 4; 
 
-    uint32_t levelsUsedBeforeBootstrap = get_relu_depth(relu_deg) + 3;
+    uint32_t levelsUsedBeforeBootstrap = relu_depth[relu_deg] + 3;
 
-    //<relu_degree> is at class-level, <relu_deg> is the input of the function
     relu_degree = relu_deg;
 
     write_to_file("../" + parameters_folder + "/relu_degree.txt", to_string(relu_deg));
@@ -230,7 +223,7 @@ void FHEController::load_context(bool verbose) {
 
     relu_degree = stoi(read_from_file("../" + parameters_folder + "/relu_degree.txt"));
 
-    //level_budget.txt contains "X, Y", X is at(0), Y is at(2)
+    //存的时侯默认有个空格
     level_budget[0] = read_from_file("../" + parameters_folder + "/level_budget.txt").at(0) - '0';
     level_budget[1] = read_from_file("../" + parameters_folder + "/level_budget.txt").at(2) - '0';
 
@@ -238,7 +231,7 @@ void FHEController::load_context(bool verbose) {
 
     uint32_t approxBootstrapDepth = 4 + 4;  
 
-    uint32_t levelsUsedBeforeBootstrap = get_relu_depth(relu_degree) + 3;
+    uint32_t levelsUsedBeforeBootstrap = relu_depth[relu_degree] + 3;
 
     circuit_depth = levelsUsedBeforeBootstrap + FHECKKSRNS::GetBootstrapDepth(approxBootstrapDepth, level_budget, SPARSE_TERNARY);
 
@@ -248,7 +241,6 @@ void FHEController::load_context(bool verbose) {
 }
 
 void FHEController::test_context() {
-    //Testing parameters for Experiment 1
 
     CCParams<CryptoContextCKKSRNS> parameters;
 
@@ -272,7 +264,7 @@ void FHEController::test_context() {
 
     uint32_t approxBootstrapDepth = 8;
 
-    uint32_t levelsUsedBeforeBootstrap = get_relu_depth(59) + 3;
+    uint32_t levelsUsedBeforeBootstrap = relu_depth[59] + 3;
 
     circuit_depth = levelsUsedBeforeBootstrap + FHECKKSRNS::GetBootstrapDepth(approxBootstrapDepth, level_budget, SPARSE_TERNARY);
 
@@ -383,11 +375,6 @@ void FHEController::load_rotation_keys(const string& filename, bool verbose) {
 }
 
 void FHEController::clear_bootstrapping_and_rotation_keys(int bootstrap_num_slots) {
-    //This lines would free more or less 1GB or precomputations, but requires access to the GetFHE function
-
-    //FHECKKSRNS* derivedPtr = dynamic_cast<FHECKKSRNS*>(context->GetScheme()->GetFHE().get());
-    //derivedPtr->m_bootPrecomMap.erase(bootstrap_num_slots);
-    
     clear_rotation_keys();
 }
 
@@ -404,9 +391,6 @@ void FHEController::clear_context(int bootstrapping_key_slots) {
     context->ClearEvalMultKeys();
 }
 
-/*
- * CKKS Encoding/Decoding/Encryption/Decryption
- */
 Ptxt FHEController::encode(const vector<double> &vec, int level, int plaintext_num_slots) {
     if (plaintext_num_slots == 0) {
         plaintext_num_slots = num_slots;
@@ -465,9 +449,6 @@ vector<double> FHEController::decrypt_tovector(const Ctxt &c, int slots) {
     return vec;
 }
 
-/*
- * Homomorphic operations
- */
 Ctxt FHEController::add(const Ctxt &c1, const Ctxt &c2) {
     return context->EvalAdd(c1, c2);
 }
@@ -518,17 +499,9 @@ Ctxt FHEController::bootstrap(const Ctxt &c, int precision, bool timing) {
 Ctxt FHEController::relu(const Ctxt &c, double scale, bool timing) {
     auto start = start_time();
 
-    /*
-     * Max min
-     */
     Ptxt result;
     context->Decrypt(key_pair.secretKey, c, &result);
     vector<double> v = result->GetRealPackedValue();
-
-    //cout << "min: " << *min_element(v.begin(), v.end()) << ", max: " << *max_element(v.begin(), v.end()) << endl;
-    /*
-     * Max min
-     */
 
     Ctxt res = context->EvalChebyshevFunction([scale](double x) -> double { if (x < 0) return 0; else return (1 / scale) * x; }, c,
                                               -1,
@@ -544,17 +517,11 @@ Ctxt FHEController::relu(const Ctxt &c, double scale, bool timing) {
 Ctxt FHEController::relu_wide(const Ctxt &c, double a, double b, int degree, double scale, bool timing) {
     auto start = start_time();
 
-    /*
-     * Max min
-     */
     Ptxt result;
     context->Decrypt(key_pair.secretKey, c, &result);
     vector<double> v = result->GetRealPackedValue();
 
     cout << "min: " << *min_element(v.begin(), v.end()) << ", max: " << *max_element(v.begin(), v.end()) << endl;
-    /*
-     * Max min
-     */
 
     Ctxt res = context->EvalChebyshevFunction([scale](double x) -> double { if (x < 0) return 0; else return (1 / scale) * x; }, c,
                                               a,
@@ -565,11 +532,6 @@ Ctxt FHEController::relu_wide(const Ctxt &c, double a, double b, int degree, dou
 
     return res;
 }
-
-
-/*
- * I/O
- */
 
 Ctxt FHEController::read_input(const string& filename, double scale) {
     vector<double> input = read_values_from_file(filename);
@@ -669,9 +631,7 @@ void FHEController::print_min_max(const Ctxt &c) {
     cout << "min: " << *min_element(v.begin(), v.end()) << ", max: " << *max_element(v.begin(), v.end()) << endl;
 }
 
-/*
- * Convolutional Neural Network functions
- */
+//初始层级
 Ctxt FHEController::convbn_initial(const Ctxt &in, double scale, bool timing) {
     auto start = start_time();
 
@@ -682,6 +642,7 @@ Ctxt FHEController::convbn_initial(const Ctxt &in, double scale, bool timing) {
 
     auto digits = context->EvalFastRotationPrecompute(in);
 
+    //核心点，5个旋转密钥代替k^2-1+c个旋转
     c_rotations.push_back(
             context->EvalRotate(context->EvalFastRotation(in, -padding, context->GetCyclotomicOrder(), digits), -img_width ));
     c_rotations.push_back(context->EvalFastRotation(in, -img_width, context->GetCyclotomicOrder(), digits));
@@ -751,8 +712,6 @@ Ctxt FHEController::convbn(const Ctxt &in, int layer, int n, double scale, bool 
  
     auto digits = context->EvalFastRotationPrecompute(in);
 
-    //TODO: combinations of rotations in order to perform only 8 rotations
-
     c_rotations.push_back(
             context->EvalRotate(context->EvalFastRotation(in, -padding, context->GetCyclotomicOrder(), digits), -img_width ));
     c_rotations.push_back(context->EvalFastRotation(in, -img_width, context->GetCyclotomicOrder(), digits));
@@ -811,8 +770,6 @@ Ctxt FHEController::convbn2(const Ctxt &in, int layer, int n, double scale, bool
 
     auto digits = context->EvalFastRotationPrecompute(in);
 
-    //TODO: combinations of rotations in order to perform only 8 rotations
-
     c_rotations.push_back(
             context->EvalRotate(context->EvalFastRotation(in, -padding, context->GetCyclotomicOrder(), digits), -img_width ));
     c_rotations.push_back(context->EvalFastRotation(in, -img_width, context->GetCyclotomicOrder(), digits));
@@ -870,8 +827,6 @@ Ctxt FHEController::convbn3(const Ctxt &in, int layer, int n, double scale, bool
     int padding = 1;
 
     auto digits = context->EvalFastRotationPrecompute(in);
-
-    //TODO: combinations of rotations in order to perform only 8 rotations
 
     c_rotations.push_back(
             context->EvalRotate(context->EvalFastRotation(in, -padding, context->GetCyclotomicOrder(), digits), -img_width ));
@@ -1180,14 +1135,8 @@ Ctxt FHEController::downsample1024to256(const Ctxt &c1, const Ctxt &c2) {
     c2->SetSlots(32768);
     num_slots = 16384*2;
 
-    /*
-     * We put the first 16384 and the second 16384 values in a single ciphertext, so that we simplify computations
-     */
     Ctxt fullpack = add(mult(c1, mask_first_n(16384, c1->GetLevel())), mult(c2, mask_second_n(16384, c2->GetLevel())));
 
-    /*
-     * We first juxtapose the values in the rows
-     */
     fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 1)), gen_mask(2, fullpack->GetLevel()));
     fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(context->EvalRotate(fullpack, 1), 1)), gen_mask(4, fullpack->GetLevel()));
     fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 4)), gen_mask(8, fullpack->GetLevel()));
@@ -1195,10 +1144,6 @@ Ctxt FHEController::downsample1024to256(const Ctxt &c1, const Ctxt &c2) {
 
     Ctxt downsampledrows = encrypt({0});
 
-
-    /*
-     * Then, the rows themselves (this method is a little bit slower, but requires one Automorphism Key)
-     */
     for (int i = 0; i < 16; i++) {
         Ctxt masked = context->EvalMult(fullpack, mask_first_n_mod(16, 1024, i, fullpack->GetLevel()));
         downsampledrows = context->EvalAdd(downsampledrows, masked);
@@ -1207,9 +1152,6 @@ Ctxt FHEController::downsample1024to256(const Ctxt &c1, const Ctxt &c2) {
         }
     }
 
-    /*
-     * Lastly, the channels
-     */
     Ctxt downsampledchannels = encrypt({0});
     for (int i = 0; i < 32; i++) {
         Ctxt masked = context->EvalMult(downsampledrows, mask_channel(i, downsampledrows->GetLevel()));
@@ -1234,7 +1176,6 @@ Ctxt FHEController::downsample256to64(const Ctxt &c1, const Ctxt &c2) {
     num_slots = 8192*2;
     Ctxt fullpack = add(mult(c1, mask_first_n(8192, c1->GetLevel())), mult(c2, mask_second_n(8192, c2->GetLevel())));
 
-    //Affianco tutte le righe
     fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(fullpack, 1)), gen_mask(2, fullpack->GetLevel()));
     fullpack = context->EvalMult(context->EvalAdd(fullpack, context->EvalRotate(context->EvalRotate(fullpack, 1), 1)), gen_mask(4, fullpack->GetLevel()));
     fullpack = context->EvalAdd(fullpack, context->EvalRotate(fullpack, 4));
@@ -1249,21 +1190,12 @@ Ctxt FHEController::downsample256to64(const Ctxt &c1, const Ctxt &c2) {
         }
     }
 
-    //print(downsampledrows, 16384);
-    //Qua e giusto
-    //exit(1);
-
     Ctxt downsampledchannels = encrypt({0});
     for (int i = 0; i < 64; i++) {
-        //N.B. se ruoto downsampledrows posso farle fast
         Ctxt masked = context->EvalMult(downsampledrows, mask_channel_2(i, downsampledrows->GetLevel()));
         downsampledchannels = context->EvalAdd(downsampledchannels, masked);
         downsampledchannels = context->EvalRotate(downsampledchannels, -(256 - 64));
     }
-
-    //Qua e giusto....
-    //print(downsampledchannels, 16384);
-    //exit(1);
 
     downsampledchannels = context->EvalRotate(downsampledchannels, (256 - 64) * 64);
     downsampledchannels = context->EvalAdd(downsampledchannels, context->EvalRotate(downsampledchannels, -4096));

@@ -32,6 +32,10 @@ else()
     message(FATAL_ERROR "PACKAGE OpenFHE NOT FOUND")
 endif ()
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 set( CMAKE_CXX_FLAGS ${OpenFHE_CXX_FLAGS} )
 
 include_directories( ${OPENMP_INCLUDES} )
@@ -52,5 +56,11 @@ else()
     link_libraries( ${OpenFHE_SHARED_LIBRARIES} )
 endif()
 
+set(SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/webserver.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/handler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FHEController.cpp
+)
 
-add_executable(LightFHEML src/main.cpp src/Controller.h src/Controller.cpp src/Tools.h)
+add_executable(LightFHEML ${SOURCES})

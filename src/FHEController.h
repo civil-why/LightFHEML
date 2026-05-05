@@ -1,7 +1,3 @@
-//
-// Created by Lorenzo on 24/10/23.
-//
-
 #ifndef PAPERRESNET_FHECONTROLLER_H
 #define PAPERRESNET_FHECONTROLLER_H
 
@@ -33,17 +29,13 @@ public:
 
     FHEController() {}
 
-    /*
-     * Context generating/loading stuff
-     */
+    //生成context
     void generate_context(bool serialize = false);
     void generate_context(int log_ring, int log_scale, int log_primes, int digits_hks, int cts_levels, int stc_levels, int relu_deg, bool serialize = false);
     void load_context(bool verbose = true);
     void test_context();
 
-    /*
-     * Generating bootstrapping and rotation keys stuff
-     */
+    //生成自举、旋转密钥
     void generate_bootstrapping_keys(int bootstrap_slots);
     void generate_rotation_keys(vector<int> rotations, bool serialize = false, string filename = "");
     void generate_bootstrapping_and_rotation_keys(vector<int> rotations,
@@ -51,27 +43,24 @@ public:
                                                   bool serialize,
                                                   const string& filename);
 
-
+    //加载、清除自举、旋转密钥
     void load_bootstrapping_and_rotation_keys(const string& filename, int bootstrap_slots, bool verbose);
     void load_rotation_keys(const string& filename, bool verbose);
     void clear_bootstrapping_and_rotation_keys(int bootstrap_num_slots);
     void clear_rotation_keys();
     void clear_context(int bootstrapping_key_slots);
 
-    /*
-     * CKKS Encoding/Decoding/Encryption/Decryption
-     */
+    //编码、解码、加密、解密
     Ptxt encode(const vector<double>& vec, int level, int plaintext_num_slots);
     Ptxt encode(double val, int level, int plaintext_num_slots);
     Ctxt encrypt(const vector<double>& vec, int level = 0, int plaintext_num_slots = 0);
     Ctxt encrypt_ptxt(const Ptxt& p);
     Ptxt decrypt(const Ctxt& c);
     vector<double> decrypt_tovector(const Ctxt& c, int slots);
+    vector<double> decode_tovector(const Ctxt& c, int slots);
 
 
-    /*
-     * Homomorphic operations
-     */
+    //同态运算
     Ctxt add(const Ctxt& c1, const Ctxt& c2);
     Ctxt mult(const Ctxt& c, double d);
     Ctxt mult(const Ctxt& c, const Ptxt& p);
@@ -80,26 +69,27 @@ public:
     Ctxt relu(const Ctxt& c, double scale, bool timing = false);
     Ctxt relu_wide(const Ctxt& c, double a, double b, int degree, double scale, bool timing = false);
 
-    /*
-     * I/O
-     */
+    //输入输出
     Ctxt read_input(const string& filename, double scale = 1);
     void print(const Ctxt& c, int slots = 0, string prefix = "");
     void print_padded(const Ctxt& c, int slots = 0, int padding = 1, string prefix = "");
     void print_min_max(const Ctxt& c);
 
-    /*
-     * Convolutional Neural Network functions
-     */
+    //CNN具体层级操作
+    //初始卷积层
     Ctxt convbn_initial(const Ctxt &in, double scale = 0.5, bool timing = false);
+    //卷积层1
     Ctxt convbn(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
+    //卷积层2
     Ctxt convbn2(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
+    //卷积层3
     Ctxt convbn3(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
     vector<Ctxt> convbn1632sx(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
     vector<Ctxt> convbn1632dx(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
     vector<Ctxt> convbn3264sx(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
     vector<Ctxt> convbn3264dx(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
 
+    //下采样操作
     Ctxt downsample1024to256(const Ctxt& c1, const Ctxt& c2);
     Ctxt downsample256to64(const Ctxt &c1, const Ctxt &c2);
 
@@ -108,15 +98,12 @@ public:
 
     Ctxt repeat(const Ctxt &in, int slots); 
 
-    //TODO: studia sta roba
     Ctxt convbnV2(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
     Ctxt convbn1632sxV2(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
     Ctxt convbn1632dxV2(const Ctxt &in, int layer, int n, double scale = 0.5, bool timing = false);
 
 
-    /*
-     * Masking things
-     */
+    //掩码操作
     Ptxt gen_mask(int n, int level);
     Ptxt mask_first_n(int n, int level);
     Ptxt mask_second_n(int n, int level);
@@ -136,9 +123,6 @@ public:
 private:
     KeyPair<DCRTPoly> key_pair;
     vector<uint32_t> level_budget = {4, 4};
-
-
 };
 
-
-#endif //PAPERRESNET_FHECONTROLLER_H
+#endif

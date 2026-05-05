@@ -3,11 +3,17 @@
 #include <fstream>
 #include <cstdint>
 #include <sys/resource.h>   
+#include <fcntl.h>  
+#include <unistd.h>
 
 #include "FHEController.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+#include "json.hpp"
 
 #define GREEN_TEXT "\033[1;32m"
 #define RED_TEXT "\033[1;31m"
@@ -27,40 +33,132 @@ Ctxt final_layer(const Ctxt& in);
 
 FHEController controller;
 
-int generate_context;
-string input_filename;
-int verbose;
-bool test;
-bool plain;
-bool test_mode;
-int test_num=100;
+// static int generate_context=-1;
+static string input_filename;
+static int verbose=2;
+// static bool test = false;
+static bool plain = false;
+static bool test_mode=false;
+// static int test_num=100;
 
-/*
- * TODO:
- * 1) Migliorare convbn sfruttando tutti gli slot del ciphertext 
- * 通过充分利用密文的所有槽位来优化convbn
- */
+// 全局互斥锁，用于线程安全的初始化
+static std::mutex g_mutex;
+static bool g_initialized = false;
 
-int main(int argc, char *argv[]) {
-    //TODO: possibile che il bootstrap a 8192 ci metta lo stesso tempo? indaga
-    //有没有可能 8192 位的引导操作耗时是一样的？去查证一下。
+int fhe_init() ;
+void fhe_set_verbose(int level) {
+    verbose = level;
+}
 
-    check_arguments(argc, argv);
-
-    if (test) {
-        controller.test_context();
-        exit(0);
+std::string fhe_run_test(int test_num) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_initialized && fhe_init() != 0) {
+        nlohmann::json err = {{"error", "FHE not initialized"}};
+        return err.dump();
     }
 
-    if (generate_context == -1) {
-        cerr << "You either have to use the argument \"generate_keys\" or \"load_keys\"!\nIf it is your first time, you could try "
-                "with \"./LowMemoryFHEResNet20 generate_keys 1\"\nCheck the README.md.\nAborting. :-(" << endl;
-        exit(1);
+    auto test_images = utils::read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
+    int total = test_images.size();
+    int correct = 0;
+    std::vector<double> times;
+    std::vector<bool> corrects;
+    
+    auto overall_start = std::chrono::steady_clock::now();
+    long peak_memory = 0;
+    
+    for (int idx = 0; idx < total; ++idx) {
+        auto img_data = test_images[idx];
+        int true_label = static_cast<int>(img_data.back());
+        img_data.pop_back();
+        
+        auto start = std::chrono::steady_clock::now();
+        int pred = executeResNet20(img_data);
+        auto end = std::chrono::steady_clock::now();
+        
+        double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
+        times.push_back(elapsed_ms);
+        bool ok = (pred == true_label);
+        corrects.push_back(ok);
+        if (ok) ++correct;
+        
+        long cur_mem = get_current_maxrss();  
+        if (cur_mem > peak_memory) peak_memory = cur_mem;
+    }
+    
+    auto overall_end = std::chrono::steady_clock::now();
+    double total_time_ms = std::chrono::duration<double, std::milli>(overall_end - overall_start).count();
+    double avg_time_ms = total_time_ms / total;
+    
+    nlohmann::json resp;
+    resp["total"] = total;
+    resp["correct"] = correct;
+    resp["accuracy"] = 100.0 * correct / total;
+    resp["average_time_ms"] = avg_time_ms;
+    resp["peak_memory_kb"] = peak_memory;
+    
+    nlohmann::json details = nlohmann::json::array();
+    for (int i = 0; i < total; ++i) {
+        details.push_back({{"correct", corrects[i]}, {"time_ms", times[i]}});
+    }
+    resp["details"] = details;
+    
+    return resp.dump();
+}
+
+int fhe_classify_image(const unsigned char* img_data, size_t data_len) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_initialized && fhe_init() != 0) return -1;
+
+    std::string old_input_filename = input_filename;
+    bool old_test_mode = test_mode;
+    test_mode = false;
+
+    int result = -1;
+    try {
+        TempImageFile tempFile(img_data, data_len);
+        input_filename = tempFile.path();
+
+        vector<double> img = read_image(input_filename.c_str());
+        if (!img.empty()) {
+            result = executeResNet20(img);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "FHE classification error: " << e.what() << std::endl;
+        result = -1;
     }
 
+    input_filename = old_input_filename;
+    test_mode = old_test_mode;
 
-    if (generate_context > 0) {
-        switch (generate_context) {
+    return result;
+}
+
+int fhe_generate_keys(int contextType) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    
+    string folder;
+    switch (contextType) {
+        case 1: folder = "keys_exp1"; break;
+        case 2: folder = "keys_exp2"; break;
+        case 3: folder = "keys_exp3"; break;
+        case 4: folder = "keys_exp4"; break;
+        default: folder = "keys_exp"; break;
+    }
+    
+    struct stat sb;
+    if (stat(("../" + folder).c_str(), &sb) == 0) {
+        std::cerr << "The keys folder \"" << folder << "\" already exists. Aborting." << std::endl;
+        return -1;
+    }
+    if (mkdir(("../" + folder).c_str(), 0777) != 0) {
+        std::cerr << "Failed to create directory: " << strerror(errno) << std::endl;
+        return -1;
+    }
+    controller.parameters_folder = folder;
+    if (verbose > 1) std::cout << "Context folder set to: \"" << controller.parameters_folder << "\"." << std::endl;
+    
+    try {
+        switch (contextType) {
             case 1:
                 controller.generate_context(16, 52, 48, 2, 3, 3, 59, true);
                 break;
@@ -77,108 +175,95 @@ int main(int argc, char *argv[]) {
                 controller.generate_context(true);
                 break;
         }
-
-        if (verbose > 1) cout << "Basic context built. Now generating bootstrapping and rotations keys..." << endl;
-
-        if (verbose > 1) cout << "(It may take a while, depending on the machine)" << endl;
-
-
+        
+        if (verbose > 1) std::cout << "Basic context built. Now generating bootstrapping and rotations keys..." << std::endl;
+        if (verbose > 1) std::cout << "(It may take a while, depending on the machine)" << std::endl;
+        
         controller.generate_bootstrapping_and_rotation_keys({1, -1, 32, -32, -1024},
-                                                            16384,
-                                                            true,
-                                                            "rotations-layer1.bin");
-        //After each serialization I release and re-load the context, otherwise OpenFHE gives a weird error (something
-        //like "4kb missing"), but I have no time to investigate :D
-        if (verbose > 1) cout << "1/6 done." << endl;
+                                                             16384, true, "rotations-layer1.bin");
+        if (verbose > 1) std::cout << "1/6 done." << std::endl;
         controller.clear_context(16384);
         controller.load_context(false);
         controller.generate_rotation_keys({1, 2, 4, 8, 64-16, -(1024 - 256), (1024 - 256) * 32, -8192},
-                                          true,
-                                          "rotations-layer2-downsample.bin");
-        if (verbose > 1) cout << "2/6 done." << endl;
+                                          true, "rotations-layer2-downsample.bin");
+        if (verbose > 1) std::cout << "2/6 done." << std::endl;
         controller.clear_context(0);
         controller.load_context(false);
         controller.generate_bootstrapping_and_rotation_keys({1, -1, 16, -16, -256},
-                                          8192,
-                                          true,
-                                          "rotations-layer2.bin");
-        if (verbose > 1) cout << "3/6 done." << endl;
+                                                            8192, true, "rotations-layer2.bin");
+        if (verbose > 1) std::cout << "3/6 done." << std::endl;
         controller.clear_context(8192);
         controller.load_context(false);
         controller.generate_rotation_keys({1, 2, 4, 32 - 8, -(256 - 64), (256 - 64) * 64, -4096},
-                                          true,
-                                          "rotations-layer3-downsample.bin");
-        if (verbose > 1) cout << "4/6 done." << endl;
+                                          true, "rotations-layer3-downsample.bin");
+        if (verbose > 1) std::cout << "4/6 done." << std::endl;
         controller.clear_context(0);
         controller.load_context(false);
         controller.generate_bootstrapping_and_rotation_keys({1, -1, 8, -8, -64},
-                                          4096,
-                                          true,
-                                          "rotations-layer3.bin");
-        if (verbose > 1)cout << "5/6 done." << endl;
+                                                            4096, true, "rotations-layer3.bin");
+        if (verbose > 1) std::cout << "5/6 done." << std::endl;
         controller.clear_context(4096);
         controller.load_context(false);
-        controller.generate_rotation_keys({1, 2, 4, 8, 16, 32, -15, 64, 128, 256, 512, 1024, 2048}, true, "rotations-finallayer.bin");
-        if (verbose > 1) cout << "6/6 done!" << endl;
-
+        controller.generate_rotation_keys({1, 2, 4, 8, 16, 32, -15, 64, 128, 256, 512, 1024, 2048},
+                                          true, "rotations-finallayer.bin");
+        if (verbose > 1) std::cout << "6/6 done!" << std::endl;
+        
         controller.clear_context(0);
         controller.load_context(false);
-
-        cout << "Context created correctly." << endl;
-        exit(0);
-
-    } else {
-        controller.load_context(verbose > 1);
-    }
-
-
-     if(test_mode) {
-
-        auto test_images = read_cifar10_batch("../data/cifar-10-batches-bin/test_batch.bin", test_num);
         
-        int correct = 0;
-        int total = test_images.size();
-        auto start =start_time();
-                
-        for(int idx = 0; idx < total; idx++) {
-            controller.clear_context(0);
-            controller.load_context(false);
-            auto start_for_pic =start_time();
-
-            auto& img_data = test_images[idx];
-            int true_label = static_cast<int>(img_data.back());
-            img_data.pop_back(); 
-            int pred_label = -1;
-            try {
-                pred_label = executeResNet20(img_data);
-            } catch (const exception& e) {
-                cerr << "Image " << idx << ": wrong prediction - " << e.what() << endl;
-                continue;
-            }
-            
-            if(pred_label == true_label) correct++;
-                        
-            cout << "Image " << idx << ": True=" << true_label 
-                 << ", Pred=" << pred_label 
-                 << " [" << (pred_label == true_label ? "✓" : "✗") << "]"<<endl;
-
-            print_duration(start_for_pic, "Image " + to_string(idx));
-        
-        }
-        
-        print_average_duration(start, "Average time:", test_num);
-
-        cout << "\n========================================" << endl;
-        cout << "Total: " << total << ", Correct: " << correct << endl;
-        cout << "Accuracy: " << (100.0 * correct / total) << "%" << endl;
-        cout << "========================================" << endl;
-        
+        std::cout << "Context created correctly." << std::endl;
+        g_initialized = true;
         return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Key generation failed: " << e.what() << std::endl;
+        return -1;
     }
+}
 
-    auto img_data = read_image(input_filename.c_str());
-    executeResNet20(img_data);
-    return 0;
+int fhe_load_keys(int exp_num) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    string folder = "keys_exp";
+    if (exp_num >= 1 && exp_num <= 4) {
+        folder = "keys_exp" + std::to_string(exp_num);
+    } else if (exp_num == 0) {
+        folder = "keys_exp"; 
+    } else {
+        std::cerr << "Invalid keys number. Use 0 (default), 1, 2, 3, or 4." << std::endl;
+        return -1;
+    }
+    
+    struct stat sb;
+    if (stat(("../" + folder).c_str(), &sb) != 0) {
+        std::cerr << "Keys folder \"" << folder << "\" does not exist. Generate keys first." << std::endl;
+        return -1;
+    }
+    
+    controller.parameters_folder = folder;
+    if (verbose > 1) std::cout << "Loading keys from \"" << folder << "\"." << std::endl;
+    
+    try {
+        controller.load_context(verbose > 1);
+        g_initialized = true;
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to load keys: " << e.what() << std::endl;
+        return -1;
+    }
+}
+
+int fhe_init() {
+    return fhe_load_keys(4);  
+}
+
+int fhe_test_context() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    try {
+        controller.test_context();
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Context test failed: " << e.what() << std::endl;
+        return -1;
+    }
 }
 
 int executeResNet20(vector<double>& input_image) {
@@ -194,38 +279,36 @@ int executeResNet20(vector<double>& input_image) {
         print_bootstrap_precision = true;
     }
 
-    if (input_filename.empty()) {
+    if (input_filename.empty()&&!test_mode) {
         input_filename = "../inputs/luis.png";
         if (verbose >= 0) cout << "You did not set any input, I use " << GREEN_TEXT << "../inputs/luis.png" << RESET_COLOR << "." << endl;
     } else {
         if (verbose >= 0) cout << "I am going to encrypt and classify " << GREEN_TEXT<< input_filename << RESET_COLOR << "." << endl;
     }
 
-    Ctxt in = controller.encrypt(input_image, controller.circuit_depth - 4 - get_relu_depth(controller.relu_degree));
-
+    Ctxt in = controller.encrypt(input_image, controller.circuit_depth - 4 - relu_depth[controller.relu_degree]);
+    
     controller.load_bootstrapping_and_rotation_keys("rotations-layer1.bin", 16384, verbose > 1);
 
     if (print_bootstrap_precision){
         controller.bootstrap_precision(controller.encrypt(input_image, controller.circuit_depth - 2));
     }
 
+    
+
     auto start = start_time();
 
     firstLayer = initial_layer(in);
     if (print_intermediate_values) controller.print(firstLayer, 16384, "Initial layer: ");
   
-    /*
-     * Layer 1: 16 channels of 32x32
-     */
+    // Layer 1：16通道，每个图像大小为32x32
     auto startLayer = start_time();
     resLayer1 = layer1(firstLayer);
     Serial::SerializeToFile("../checkpoints/layer1.bin", resLayer1, SerType::BINARY);
     if (print_intermediate_values) controller.print(resLayer1, 16384, "Layer 1: ");
     if (verbose > 0) print_duration(startLayer, "Layer 1 took:");
 
-    /*
-     * Layer 2: 32 channels of 16x16
-     */
+    // Layer 2：32通道，每个图像大小为16x16
     startLayer = start_time();
     Serial::DeserializeFromFile("../checkpoints/layer1.bin", resLayer1, SerType::BINARY);
     resLayer2 = layer2(resLayer1);
@@ -233,9 +316,7 @@ int executeResNet20(vector<double>& input_image) {
     if (print_intermediate_values) controller.print(resLayer2, 8192, "Layer 2: ");
     if (verbose > 0) print_duration(startLayer, "Layer 2 took:");
 
-    /*
-     * Layer 2: 64 channels of 8x8
-     */
+    // Layer 3：64通道，每个图像大小为8x8
     startLayer = start_time();
     Serial::DeserializeFromFile("../checkpoints/layer2.bin", resLayer2, SerType::BINARY);
     resLayer3 = layer3(resLayer2);
@@ -278,7 +359,6 @@ Ctxt final_layer(const Ctxt& in) {
     Ctxt res = controller.rotsum(in, 64);
     res = controller.mult(res, controller.mask_mod(64, res->GetLevel(), 1.0 / 64.0));
 
-    //From here, I need 10 repetitons, but I use 16 since *repeat* goes exponentially
     res = controller.repeat(res, 16);
     res = controller.mult(res, weight);
     res = controller.rotsum_padded(res, 64);
@@ -290,12 +370,11 @@ Ctxt final_layer(const Ctxt& in) {
 
     vector<double> clear_result = controller.decrypt_tovector(res, 10);
 
-    //Index of the max element
     auto max_element_iterator = std::max_element(clear_result.begin(), clear_result.end());
     int index_max = distance(clear_result.begin(), max_element_iterator);
 
     if (verbose >= 0) {
-        cout << "The input image is classified as " << YELLOW_TEXT << utils::get_class(index_max) << RESET_COLOR << "" << endl;
+        cout << "The input image is classified as " << YELLOW_TEXT << utils::class_map[index_max] << RESET_COLOR << "" << endl;
         cout << "The index of max element is " << YELLOW_TEXT << index_max << RESET_COLOR << "" << endl;
         if (plain) {
             string command = "python3 ../src/plain/script.py \"" + input_filename + "\"";
@@ -320,13 +399,12 @@ Ctxt layer3(const Ctxt& in) {
     auto start = start_time();
     Ctxt boot_in = controller.bootstrap(in, timing);
 
-    vector<Ctxt> res1sx = controller.convbn3264sx(boot_in, 7, 1, scaleSx, timing); //Questo è lento
-    vector<Ctxt> res1dx = controller.convbn3264dx(boot_in, 7, 1, scaleDx, timing); //Questo è lento
+    vector<Ctxt> res1sx = controller.convbn3264sx(boot_in, 7, 1, scaleSx, timing); 
+    vector<Ctxt> res1dx = controller.convbn3264dx(boot_in, 7, 1, scaleDx, timing); 
 
     controller.clear_bootstrapping_and_rotation_keys(8192);
     controller.load_rotation_keys("rotations-layer3-downsample.bin", timing);
 
-    //N.B. questo downsampling usa un chain index in meno - posso accelerare convbn3264sx
     Ctxt fullpackSx = controller.downsample256to64(res1sx[0], res1sx[1]);
     Ctxt fullpackDx = controller.downsample256to64(res1dx[0], res1dx[1]);
     res1sx.clear();
@@ -424,7 +502,6 @@ Ctxt layer2(const Ctxt& in) {
 
     fullpackSx = controller.relu(fullpackSx, scaleSx, timing);
 
-    //I use the scale of the right branch since they will be added together
     fullpackSx = controller.convbn2(fullpackSx, 4, 2, scaleDx, timing);
     Ctxt res1 = controller.add(fullpackSx, fullpackDx);
     res1 = controller.bootstrap(res1, timing);
@@ -533,81 +610,6 @@ Ctxt layer1(const Ctxt& in) {
     return res3;
 }
 
-void check_arguments(int argc, char *argv[]) {
-    generate_context = -1;
-    verbose = 0;
-
-    for (int i = 1; i < argc; ++i) {
-        //I first check the "verbose" command
-        if (string(argv[i]) == "verbose") {
-            if (i + 1 < argc) { // Verifica se c'è un argomento successivo a "input"
-                verbose = atoi(argv[i + 1]);
-            }
-        }
-    }
-
-
-    for (int i = 1; i < argc; ++i) {
-        if (string(argv[i]) == "load_keys") {
-            if (i + 1 < argc) {
-                controller.parameters_folder = "keys_exp" + string(argv[i + 1]);
-                if (verbose > 1) cout << "Context folder set to: \"" << controller.parameters_folder << "\"." << endl;
-                generate_context = 0;
-            }
-        }
-
-        if (string(argv[i]) == "test") {
-            test = true;
-        }
-
-        if (string(argv[i]) == "generate_keys") {
-            if (i + 1 < argc) {
-                string folder = "";
-                if (string(argv[i+1]) == "1") {
-                    folder = "keys_exp1";
-                    generate_context = 1;
-                } else if (string(argv[i+1]) == "2") {
-                    folder = "keys_exp2";
-                    generate_context = 2;
-                } else if (string(argv[i+1]) == "3") {
-                    folder = "keys_exp3";
-                    generate_context = 3;
-                } else if (string(argv[i+1]) == "4") {
-                    folder = "keys_exp4";
-                    generate_context = 4;
-                } else {
-                    cerr << "Set a proper value for 'generate_keys'. For instance, use '1'. Check the README.md" << endl;
-                    exit(1);
-                }
-
-                struct stat sb;
-                if (stat(("../" + folder).c_str(), &sb) == 0) {
-                    cerr << "The keys folder \"" << folder << "\" already exists, I will abort.";
-                    exit(1);
-                }
-                else {
-                    mkdir(("../" + folder).c_str(), 0777);
-                }
-
-                controller.parameters_folder = folder;
-                if (verbose > 1) cout << "Context folder set to: \"" << controller.parameters_folder << "\"." << endl;
-            }
-        }
-        if (string(argv[i]) == "input") {
-            if (i + 1 < argc) {
-                input_filename = "../" + string(argv[i + 1]);
-                if (verbose > 1) cout << "Input image set to: \"" << input_filename << "\"." << endl;
-            }
-        }
-
-        if (string(argv[i]) == "plain") {
-            plain = true;
-        }
-
-    }
-
-}
-
 vector<double> read_image(const char *filename) {
     int width = 32;
     int height = 32;
@@ -623,15 +625,15 @@ vector<double> read_image(const char *filename) {
     imageVector.reserve(width * height * channels);
 
     for (int i = 0; i < width * height; ++i) {
-        //Channel R
+        // R通道
         imageVector.push_back(static_cast<double>(image_data[3 * i]) / 255.0f);
     }
     for (int i = 0; i < width * height; ++i) {
-        //Channel G
+        // G通道
         imageVector.push_back(static_cast<double>(image_data[1 + 3 * i]) / 255.0f);
     }
     for (int i = 0; i < width * height; ++i) {
-        //Channel B
+        // B通道
         imageVector.push_back(static_cast<double>(image_data[2 + 3 * i]) / 255.0f);
     }
 

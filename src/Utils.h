@@ -1,12 +1,11 @@
-//
-// Created by Lorenzo on 24/10/23.
-//
-
-#ifndef LOWMEMORYFHERESNET20_UTILS_H
-#define LOWMEMORYFHERESNET20_UTILS_H
+#ifndef UTILS_H
+#define UTILS_H
 
 #include <iostream>
+#include <fcntl.h>
+#include <unistd.h>
 #include <openfhe.h>
+#include <sys/resource.h>   
 
 #define YELLOW_TEXT "\033[1;33m"
 #define RESET_COLOR "\033[0m"
@@ -17,40 +16,24 @@ using namespace std::chrono;
 using namespace lbcrypto;
 
 namespace utils {
-
     static inline chrono::time_point<steady_clock, nanoseconds> start_time() {
         return steady_clock::now();
     }
 
     static duration<long long, ratio<1, 1000>> total_time;
 
-    static inline string get_class(int max_index) {
-        switch (max_index) {
-            //I know, I should use a dict
-            case 0:
-                return "Airplane";
-            case 1:
-                return "Automobile";
-            case 2:
-                return "Bird";
-            case 3:
-                return "Cat";
-            case 4:
-                return "Deer";
-            case 5:
-                return "Dog";
-            case 6:
-                return "Frog";
-            case 7:
-                return "Horse";
-            case 8:
-                return "Ship";
-            case 9:
-                return "Truck";
-        }
-
-        return "?";
-    }
+    static map<int,string> class_map ={
+        {0,"airplane"},
+        {1,"automobile"},
+        {2,"bird"},
+        {3,"cat"},
+        {4,"deer"},
+        {5,"dog"},
+        {6,"frog"},
+        {7,"horse"},
+        {8,"ship"},
+        {9,"truck"}
+    };
 
     static inline void print_duration(chrono::time_point<steady_clock, nanoseconds> start, const string &title) {
         auto ms = duration_cast<milliseconds>(steady_clock::now() - start);
@@ -92,7 +75,7 @@ namespace utils {
 
         if (!file.is_open()) {
             std::cerr << "Can not open " << filename << std::endl;
-            return values; // Restituisce un vettore vuoto in caso di errore
+            return values; // 回传空值
         }
 
         string row;
@@ -102,7 +85,6 @@ namespace utils {
             while (std::getline(stream, value, ',')) {
                 try {
                     double num = stod(value);
-                    //num = std::floor(num * 10) / 10; //1 decimal
                     values.push_back(num * scale);
                 } catch (const invalid_argument& e) {
                     cerr << "Can not convert: " << value << endl;
@@ -141,7 +123,6 @@ namespace utils {
         if (result.size() != expectedResult.size())
             OPENFHE_THROW(config_error, "Cannot compare vectors with different numbers of elements");
 
-        // using the infinity norm
         double maxError = 0;
         for (size_t i = 0; i < result.size(); ++i) {
             double error = std::abs(result[i].real() - expectedResult[i].real());
@@ -152,33 +133,19 @@ namespace utils {
         return std::abs(std::log2(maxError));
     }
 
-    static inline int get_relu_depth(int degree) {
-        //Check: https://github.com/openfheorg/openfhe-development/blob/main/src/pke/examples/FUNCTION_EVALUATION.md
-        switch (degree) {
-            case 5:
-                return 3;
-            case 13:
-                return 4;
-            case 27:
-                return 5;
-            case 59:
-                return 6;
-            case 119:
-                return 7;
-            case 200:
-            case 247:
-                return 8;
-            case 495:
-                return 9;
-            case 1007:
-                return 10;
-            case 2031:
-                return 11;
-        }
+    static map<int,int> relu_depth ={//切比雪夫近似时消耗深度，在[-1,1]区间上可以减少一个深度
+        {5,3},
+        {13,4},
+        {27,5},
+        {59,6},
+        {119,7},
+        {200,8},
+        {247,8},
+        {495,9},
+        {1007,10},
+        {2031,11}
+    };
 
-        cerr << "Set a valid degree for ReLU" << endl;
-        exit(1);
-    }
 
     static inline void write_to_file(string filename, string content) {
         ofstream file;
@@ -188,7 +155,6 @@ namespace utils {
     }
 
     static inline string read_from_file(string filename) {
-        //It reads only the first line!!
         string line;
         ifstream myfile (filename);
         if (myfile.is_open()) {
@@ -210,7 +176,7 @@ namespace utils {
 
         ms/=test_num;
 
-        duration_time += ms;//duration不一定从0开始
+        total_time += ms;//不一定从0开始
 
         auto secs = duration_cast<seconds>(ms);//秒
         ms -= duration_cast<milliseconds>(secs);
@@ -218,9 +184,9 @@ namespace utils {
         secs -= duration_cast<seconds>(mins);
 
         if (mins.count() < 1) {
-            cout << title << "Average time : " << secs.count() << "." << ms.count() << "s" << " ( " << duration_cast<seconds>(duration_time).count() << "s)" << endl;
+            cout << title << "Average time : " << secs.count() << "." << ms.count() << "s" << " ( " << duration_cast<seconds>(total_time).count() << "s)" << endl;
         } else {
-            cout << title << "Average time : " << mins.count() << "min" << secs.count() << "." << ms.count() << "s" << " ( " << duration_cast<seconds>(duration_time).count() << "s)" << endl;
+            cout << title << "Average time : " << mins.count() << "min" << secs.count() << "." << ms.count() << "s" << " ( " << duration_cast<seconds>(total_time).count() << "s)" << endl;
         }
     }
 
@@ -253,6 +219,67 @@ namespace utils {
         return images;
     }
 
+    class TempImageFile {
+    public:
+        TempImageFile(const unsigned char* data, size_t len)
+            : path_()
+        {
+            std::string pattern = "/tmp/fhe_img_XXXXXX";
+            std::vector<char> tmp(pattern.begin(), pattern.end());
+            tmp.push_back('\0');
+
+            int fd = mkstemp(tmp.data());
+            if (fd == -1) {
+                throw std::runtime_error("mkstemp failed: " + std::string(strerror(errno)));
+            }
+            path_ = std::string(tmp.data());
+
+            ssize_t written = write(fd, data, len);
+            if (written != static_cast<ssize_t>(len)) {
+                close(fd);
+                unlink(path_.c_str());
+                throw std::runtime_error("write to temp file failed: " + std::string(strerror(errno)));
+            }
+            close(fd);
+        }
+
+        ~TempImageFile() {
+            if (!path_.empty()) {
+                unlink(path_.c_str());
+            }
+        }
+
+        TempImageFile(const TempImageFile&) = delete;
+        TempImageFile& operator=(const TempImageFile&) = delete;
+
+        TempImageFile(TempImageFile&& other) noexcept
+            : path_(std::move(other.path_))
+        {
+            other.path_.clear();
+        }
+
+        TempImageFile& operator=(TempImageFile&& other) noexcept {
+            if (this != &other) {
+                if (!path_.empty()) unlink(path_.c_str());
+                path_ = std::move(other.path_);
+                other.path_.clear();
+            }
+            return *this;
+        }
+
+        const std::string& path() const { return path_; }
+
+    private:
+        std::string path_;
+    };
+
+    static inline long get_current_maxrss() {
+        struct rusage usage;
+        if (getrusage(RUSAGE_SELF, &usage) == 0) {
+            return usage.ru_maxrss;  
+        }
+        return 0;
+    }
 }
 
-#endif //LOWMEMORYFHERESNET20_UTILS_H
+#endif 
