@@ -41,8 +41,6 @@ static bool plain = false;
 static bool test_mode=false;
 // static int test_num=100;
 
-// 全局互斥锁，用于线程安全的初始化
-static std::mutex g_mutex;
 static bool g_initialized = false;
 
 int fhe_init() ;
@@ -51,7 +49,7 @@ void fhe_set_verbose(int level) {
 }
 
 std::string fhe_run_test(int test_num) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    
     if (!g_initialized && fhe_init() != 0) {
         nlohmann::json err = {{"error", "FHE not initialized"}};
         return err.dump();
@@ -106,8 +104,7 @@ std::string fhe_run_test(int test_num) {
 }
 
 int fhe_classify_image(const unsigned char* img_data, size_t data_len) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    std::cout<<"classify begin"<<std::endl;
+    
     if (!g_initialized && fhe_init() != 0) return -1;
 
     std::string old_input_filename = input_filename;
@@ -135,7 +132,7 @@ int fhe_classify_image(const unsigned char* img_data, size_t data_len) {
 }
 
 int fhe_generate_keys(int contextType) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    
     std::cout<<"generate keys begin"<<std::endl;
     string folder;
     switch (contextType) {
@@ -222,7 +219,7 @@ int fhe_generate_keys(int contextType) {
 }
 
 int fhe_load_keys(int exp_num) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    
     string folder = "keys_exp";
     if (exp_num >= 1 && exp_num <= 4) {
         folder = "keys_exp" + std::to_string(exp_num);
@@ -232,7 +229,7 @@ int fhe_load_keys(int exp_num) {
         std::cerr << "Invalid keys number. Use 0 (default), 1, 2, 3, or 4." << std::endl;
         return -1;
     }
-    
+
     struct stat sb;
     if (stat(("../" + folder).c_str(), &sb) != 0) {
         std::cerr << "Keys folder \"" << folder << "\" does not exist. Generate keys first." << std::endl;
@@ -257,7 +254,7 @@ int fhe_init() {
 }
 
 int fhe_test_context() {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    
     try {
         controller.test_context();
         return 0;
