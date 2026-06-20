@@ -177,8 +177,96 @@ std::string handleCipherForOne(const std::string& imageData, const std::string& 
     return resp.dump();
 }
 
-std::string handleCipherForBatch() {
-    return fhe_run_test(100);  
+void handleCipherForBatch(const httplib::Request& req, httplib::Response& res) {
+    res.set_header("Content-Type", "text/event-stream");
+    res.set_header("Cache-Control", "no-cache");
+    res.set_header("Connection", "keep-alive");
+    res.set_header("X-Accel-Buffering", "no");
+
+    res.set_chunked_content_provider(
+        "text/event-stream", 
+        [&req](size_t offset, httplib::DataSink &sink) -> bool {
+            if (offset > 0) {
+                sink.done();
+                return false;
+            }
+
+            if (!is_fhe_initialized() && fhe_init() != 0) {
+                std::string err = "event: error\ndata: {\"error\":\"FHE not initialized\"}\n\n";
+                sink.write(err.data(), err.size());
+                sink.done();
+                return false;
+            }
+
+            int test_num = 100;
+            if (req.has_param("num")) {
+                try { test_num = std::stoi(req.get_param_value("num")); } catch (...) {}
+            }
+
+            auto test_images = utils::read_cifar10_batch(
+                "../data/cifar-10-batches-bin/test_batch.bin", test_num);
+            int total = test_images.size();
+
+            nlohmann::json start_msg = {{"total", total}};
+            std::string start_event = "event: start\ndata: " + start_msg.dump() + "\n\n";
+            if (!sink.write(start_event.data(), start_event.size())) {
+                sink.done(); return false;
+            }
+
+            int correct_cnt = 0;
+            long peak_mem = 0;
+            double sum_time = 0.0;
+
+            for (int i = 0; i < total; ++i) {
+                auto img_data = test_images[i];
+                int true_label = static_cast<int>(img_data.back());
+                img_data.pop_back();
+
+                auto t_start = std::chrono::steady_clock::now();
+                int pred = executeResNet20(img_data);  
+                auto t_end = std::chrono::steady_clock::now();
+
+                double ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+                bool ok = (pred == true_label);
+                if (ok) ++correct_cnt;
+                sum_time += ms;
+
+                long cur_mem = utils::get_current_maxrss(); 
+                if (cur_mem > peak_mem) peak_mem = cur_mem;
+
+                nlohmann::json item = {
+                    {"index", i+1},
+                    {"true_label", true_label},
+                    {"prediction", pred},
+                    {"correct", ok},
+                    {"time_ms", ms},
+                    {"memory_kb", cur_mem}
+                };
+                std::string result_event = "event: result\ndata: " + item.dump() + "\n\n";
+
+                // 发送该条结果；若失败（如客户端断开）则终止
+                if (!sink.write(result_event.data(), result_event.size())) {
+                    sink.done();
+                    return false;
+                }
+                // 发送成功，继续下一张
+            }
+
+            // 发送 done 事件并正常结束
+            nlohmann::json summary = {
+                {"total", total},
+                {"correct", correct_cnt},
+                {"accuracy", total > 0 ? (100.0 * correct_cnt / total) : 0.0},
+                {"average_time_ms", total > 0 ? (sum_time / total) : 0.0},
+                {"peak_memory_kb", peak_mem}
+            };
+            std::string done_event = "event: done\ndata: " + summary.dump() + "\n\n";
+            sink.write(done_event.data(), done_event.size());
+            sink.done();
+            return false;  
+        },
+        [](bool success) {}
+    );
 }
 
 std::string handleUpdateKeys() {

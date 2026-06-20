@@ -232,8 +232,7 @@
                 <h3 style="color:#1e3a5f;">每张图片详情</h3>
                 <div class="scrollable-table">
                     <table id="batchDetailsTable" style="display: none;">
-                        <thead><tr><th>序号</th><th>真实标签</th><th>预测标签</th><th>是否正确</th><th>耗时 (ms)</th></tr></thead>
-                        <tbody id="batchDetailsBody"></tbody>
+                    <thead><tr><th>序号</th><th>真实标签</th><th>预测标签</th><th>是否正确</th><th>耗时 (ms)</th><th>内存 (KB)</th></tr></thead>                        <tbody id="batchDetailsBody"></tbody>
                     </table>
                 </div>
                 <div id="batchNoData" class="placeholder-message" style="text-align:center; padding:20px;">暂无数据，请点击“开始批量测试”</div>
@@ -529,6 +528,50 @@
         const batchDetailsTable = document.getElementById('batchDetailsTable');
         const batchDetailsBody = document.getElementById('batchDetailsBody');
         const batchNoData = document.getElementById('batchNoData');
+        function updateBatchProgress(processed, total) {
+            batchCipherProgressBar.max = total;
+            batchCipherProgressBar.value = processed;
+            batchCipherProgressPercent.textContent = processed + ' / ' + total;
+        }
+
+        function addBatchDetailRow(item) {
+            const row = batchDetailsBody.insertRow();
+            row.insertCell(0).textContent = item.index;
+            row.insertCell(1).textContent = item.true_label;
+            row.insertCell(2).textContent = item.prediction;
+            row.insertCell(3).textContent = item.correct ? '✓' : '✗';
+            row.insertCell(4).textContent = item.time_ms.toFixed(2);
+            row.insertCell(5).textContent = item.memory_kb;   // 内存数据
+            batchDetailsTable.style.display = 'table';
+            batchNoData.style.display = 'none';
+        }
+
+        function updateBatchStats(processed, correct, sumTime, peakMem) {
+            document.getElementById('batchTotal').textContent = processed;
+            document.getElementById('batchCorrect').textContent = correct;
+            const accuracy = processed > 0 ? (correct / processed * 100).toFixed(2) : '0.00';
+            document.getElementById('batchAccuracy').textContent = accuracy + '%';
+            const avgTime = processed > 0 ? (sumTime / processed).toFixed(2) : '-';
+            document.getElementById('batchAvgTime').textContent = avgTime;
+            document.getElementById('batchPeakMem').textContent = peakMem;
+            batchStatsDiv.style.display = 'flex';   // 显示统计卡片
+        }
+
+        function resetBatchUI() {
+            batchCipherProgressBar.value = 0;
+            batchCipherProgressPercent.textContent = '0 / 0';
+            batchStatsDiv.style.display = 'none';
+            batchDetailsTable.style.display = 'none';
+            batchNoData.style.display = 'block';
+            batchDetailsBody.innerHTML = '';
+            // 重置统计数值显示
+            document.getElementById('batchTotal').textContent = '-';
+            document.getElementById('batchCorrect').textContent = '-';
+            document.getElementById('batchAccuracy').textContent = '-';
+            document.getElementById('batchAvgTime').textContent = '-';
+            document.getElementById('batchPeakMem').textContent = '-';
+        }
+
         function resetBatchUI() {
             batchCipherProgressBar.value = 0;
             batchCipherProgressPercent.textContent = '0%';
@@ -538,58 +581,76 @@
             batchDetailsBody.innerHTML = '';
         }
         resetBatchCipherBtn.addEventListener('click', resetBatchUI);
-        startBatchCipherBtn.addEventListener('click', async () => {
+        startBatchCipherBtn.addEventListener('click', startBatchCipherStream);
+
+        async function startBatchCipherStream() {
             if (!isKeyReady) { alert('请先确保密钥已就绪（可点击更新密钥）'); return; }
             startBatchCipherBtn.disabled = true;
             resetBatchUI();
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += 2;
-                if (progress >= 95) progress = 95;
-                batchCipherProgressBar.value = progress;
-                batchCipherProgressPercent.textContent = progress + '%';
-            }, 1000);
+
             try {
-                const res = await fetch('/cipher_for_batch', { method: 'POST' });
-                clearInterval(progressInterval);
-                batchCipherProgressBar.value = 100;
-                batchCipherProgressPercent.textContent = '100%';
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                if (data.error) { alert(`批量测试失败: ${data.error}`); return; }
-                document.getElementById('batchTotal').textContent = data.total ?? '-';
-                document.getElementById('batchCorrect').textContent = data.correct ?? '-';
-                let accuracy = data.accuracy !== undefined ? data.accuracy.toFixed(2) : '-';
-                document.getElementById('batchAccuracy').textContent = accuracy;
-                document.getElementById('batchAvgTime').textContent = data.average_time_ms !== undefined ? data.average_time_ms.toFixed(2) : '-';
-                document.getElementById('batchPeakMem').textContent = data.peak_memory_kb ?? '-';
-                batchStatsDiv.style.display = 'flex';
-                if (data.details && Array.isArray(data.details) && data.details.length > 0) {
-                    batchDetailsBody.innerHTML = '';
-                    for (let i = 0; i < data.details.length; i++) {
-                        const item = data.details[i];
-                        const row = batchDetailsBody.insertRow();
-                        row.insertCell(0).textContent = i+1;
-                        row.insertCell(1).textContent = item.true_label !== undefined ? item.true_label : 'N/A';
-                        row.insertCell(2).textContent = item.pred_label !== undefined ? item.pred_label : 'N/A';
-                        row.insertCell(3).textContent = item.correct ? '✓' : '✗';
-                        row.insertCell(4).textContent = item.time_ms !== undefined ? item.time_ms.toFixed(2) : '-';
+                const response = await fetch('/cipher_for_batch', { method: 'POST' });
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let total = 0;
+                let processed = 0;
+                let correctCount = 0;
+                let sumTime = 0;
+                let peakMem = 0;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; 
+
+                    let currentEvent = null;
+                    for (const line of lines) {
+                        if (line.startsWith('event: ')) {
+                            currentEvent = line.substring(7).trim();
+                        } else if (line.startsWith('data: ')) {
+                            const jsonStr = line.substring(6);
+                            try {
+                                const data = JSON.parse(jsonStr);
+                                if (currentEvent === 'start') {
+                                    total = data.total;
+                                    updateBatchProgress(0, total);
+                                } else if (currentEvent === 'result') {
+                                    processed = data.index;
+                                    updateBatchProgress(processed, total);
+                                    addBatchDetailRow(data);
+                                    if (data.correct) correctCount++;
+                                    sumTime += data.time_ms;
+                                    if (data.memory_kb > peakMem) peakMem = data.memory_kb;
+                                    updateBatchStats(processed, correctCount, sumTime, peakMem);
+                                } else if (currentEvent === 'done') {
+                                    const summary = data;
+                                    // 最终显示用服务端汇总（与累加值一致）
+                                    updateBatchStats(total, summary.correct, sumTime, summary.peak_memory_kb);
+                                    batchCipherProgressBar.value = total;
+                                    batchCipherProgressPercent.textContent = total + ' / ' + total;
+                                    console.log('批量测试完成');
+                                } else if (currentEvent === 'error') {
+                                    alert('批量测试失败: ' + data.error);
+                                    break;
+                                }
+                            } catch (e) {
+                                console.error('解析 SSE 数据失败:', e, line);
+                            }
+                            currentEvent = null;
+                        }
                     }
-                    batchDetailsTable.style.display = 'table';
-                    batchNoData.style.display = 'none';
-                } else {
-                    batchNoData.textContent = '后端未返回详细数据，请检查 /cipher_for_batch 接口';
-                    batchNoData.style.display = 'block';
                 }
             } catch (err) {
-                clearInterval(progressInterval);
-                batchCipherProgressBar.value = 0;
-                batchCipherProgressPercent.textContent = '0%';
-                alert(`批量测试请求失败: ${err.message}`);
+                alert('连接中断或请求失败: ' + err.message);
             } finally {
                 startBatchCipherBtn.disabled = false;
             }
-        });
+        }
+
 
         // ---------- 密钥更新 ----------
         const updateKeysBtn = document.getElementById('updateKeysBtn');

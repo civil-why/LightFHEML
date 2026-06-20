@@ -41,10 +41,7 @@ int main() {
         res.set_content(result, "application/json");
     });
 
-    svr.Post("/cipher_for_batch", [](const httplib::Request& req, httplib::Response& res) {
-        std::string result = handleCipherForBatch();
-        res.set_content(result, "application/json");
-    });
+    svr.Post("/cipher_for_batch", handleCipherForBatch);
 
     svr.Get("/update_keys", [](const httplib::Request&, httplib::Response& res) {
         std::string result = handleUpdateKeys();

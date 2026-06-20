@@ -42,6 +42,8 @@ static bool test_mode=false;
 // static int test_num=100;
 
 static bool g_initialized = false;
+bool is_fhe_initialized() { return g_initialized; }
+void set_fhe_initialized(bool val) { g_initialized = val; }
 
 int fhe_init() ;
 void fhe_set_verbose(int level) {
