@@ -2,6 +2,7 @@
 #define HANDLER_H
 
 #include <string>
+#include "httplib.h"
 
 std::string handlePlainForOne(const std::string& imageData, const std::string& originalFilename);
 std::string handlePlainForBatch();
