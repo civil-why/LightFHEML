@@ -267,6 +267,7 @@ int fhe_test_context() {
 }
 
 int executeResNet20(vector<double>& input_image) {
+    controller.load_context(false);
     cout << "Encrypted ResNet20 classification started." << endl;
 
     Ctxt firstLayer, resLayer1, resLayer2, resLayer3, finalRes;
