@@ -35,7 +35,7 @@ FHEController controller;
 
 // static int generate_context=-1;
 static string input_filename;
-static int verbose=2;
+static int verbose=1;
 // static bool test = false;
 static bool plain = false;
 static bool test_mode=false;

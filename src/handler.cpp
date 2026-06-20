@@ -178,6 +178,7 @@ std::string handleCipherForOne(const std::string& imageData, const std::string& 
 }
 
 void handleCipherForBatch(const httplib::Request& req, httplib::Response& res) {
+    std::cout << "cipher_for_batch" << std::endl;
     res.set_header("Content-Type", "text/event-stream");
     res.set_header("Cache-Control", "no-cache");
     res.set_header("Connection", "keep-alive");
@@ -218,6 +219,7 @@ void handleCipherForBatch(const httplib::Request& req, httplib::Response& res) {
             double sum_time = 0.0;
 
             for (int i = 0; i < total; ++i) {
+                std::cout << "cipher_for_batch: image" << i << " started" << std::endl;
                 auto img_data = test_images[i];
                 int true_label = static_cast<int>(img_data.back());
                 img_data.pop_back();
@@ -250,6 +252,7 @@ void handleCipherForBatch(const httplib::Request& req, httplib::Response& res) {
                     return false;
                 }
                 // 发送成功，继续下一张
+                std::cout << "cipher_for_batch: image" << i << " done" << std::endl;
             }
 
             // 发送 done 事件并正常结束
