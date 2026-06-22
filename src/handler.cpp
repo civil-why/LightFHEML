@@ -18,6 +18,55 @@
 
 namespace {
 
+    std::vector<unsigned char> encode_as_ppm(const std::vector<double>& pixels, int index) {
+        // 像素总数 32*32*3 = 3072
+        const int width = 32, height = 32, maxval = 255;
+
+        // 构造 PPM 头部
+        std::ostringstream header;
+        header << "P6\n" << width << " " << height << "\n" << maxval << "\n";
+        std::string head_str = header.str();
+
+        // 准备最终数据：头部 + 二进制像素
+        std::vector<unsigned char> ppm;
+        ppm.reserve(head_str.size() + 3072);
+        ppm.insert(ppm.end(), head_str.begin(), head_str.end());
+
+        // 将通道分离的数据重新交织为 RGB 顺序，并转为 0~255
+        for (int i = 0; i < width * height; ++i) {
+            unsigned char r = static_cast<unsigned char>(pixels[i] * 255.0 + 0.5);
+            unsigned char g = static_cast<unsigned char>(pixels[1024 + i] * 255.0 + 0.5);
+            unsigned char b = static_cast<unsigned char>(pixels[2048 + i] * 255.0 + 0.5);
+            ppm.push_back(r);
+            ppm.push_back(g);
+            ppm.push_back(b);
+        }
+
+        const std::string dir = "../data/PPM";
+        static bool dir_created = false;
+        if (!dir_created) {
+            // 创建目录（若不存在），忽略已存在的错误
+            if (mkdir(dir.c_str(), 0777) != 0 && errno != EEXIST) {
+                std::cerr << "Failed to create directory " << dir << std::endl;
+            }
+            dir_created = true;
+        }
+
+        char fname[64];
+        snprintf(fname, sizeof(fname), "img_%04d.ppm", index);  // 例如 img_0001.ppm
+        std::string filepath = dir + "/" + fname;
+
+        std::ofstream ofs(filepath, std::ios::binary);
+        if (ofs.is_open()) {
+            ofs.write(reinterpret_cast<const char*>(ppm.data()), ppm.size());
+            ofs.close();
+        } else {
+            std::cerr << "Cannot write PPM to " << filepath << std::endl;
+        }
+
+        return ppm;
+    }
+
     std::string extract_json(const std::string& output) {
         const std::string START = "JSON_RESULT_START";
         const std::string END   = "JSON_RESULT_END";
@@ -219,13 +268,16 @@ void handleCipherForBatch(const httplib::Request& req, httplib::Response& res) {
             double sum_time = 0.0;
 
             for (int i = 0; i < total; ++i) {
-                std::cout << "cipher_for_batch: image" << i << " started" << std::endl;
                 auto img_data = test_images[i];
                 int true_label = static_cast<int>(img_data.back());
-                img_data.pop_back();
+                img_data.pop_back();   // img_data 现在只有 3072 个像素值
+
+                // 将像素编码为 PPM 图像文件内容
+                std::vector<unsigned char> ppm_bytes = encode_as_ppm(img_data, i+1);
 
                 auto t_start = std::chrono::steady_clock::now();
-                int pred = executeResNet20(img_data);  
+                // 调用单张图像接口（内部会写临时文件 -> stbi_load -> executeResNet20）
+                int pred = fhe_classify_image(ppm_bytes.data(), ppm_bytes.size());
                 auto t_end = std::chrono::steady_clock::now();
 
                 double ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
