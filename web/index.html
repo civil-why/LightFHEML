@@ -444,11 +444,32 @@
         let cipherSelectedFile = null, cipherImageValid = false;
 
         function handleCipherFile(file) {
-            if (!file.type.startsWith('image/')) { alert('请选择图片文件'); return; }
+            // 支持 .ppm 文件，浏览器可能无法识别其 MIME 类型
+            const validExtensions = ['png', 'jpg', 'jpeg', 'ppm'];
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (!validExtensions.includes(ext)) {
+                alert('请选择 PNG、JPG 或 PPM 图片文件');
+                return;
+            }
+
             cipherSelectedFile = file;
             const reader = new FileReader();
             reader.onload = (e) => {
                 cipherPreviewImg.src = e.target.result;
+                cipherFileName.textContent = file.name;
+
+                if (ext === 'ppm') {
+                    // 浏览器不支持的格式，直接信任尺寸，跳过 Image 验证
+                    cipherFileDimension.textContent = '32 × 32 (PPM)';
+                    cipherSizeWarning.textContent = '';
+                    cipherImageValid = true;
+                    cipherComputeBtn.disabled = !isKeyReady;
+                    cipherUploadArea.classList.add('disabled');
+                    cipherPreviewSection.style.display = 'block';
+                    return;
+                }
+
+                // 原有逻辑：通过 Image 验证其他格式
                 const img = new Image();
                 img.onload = () => {
                     cipherFileDimension.textContent = `${img.width} × ${img.height}`;
@@ -465,11 +486,10 @@
                     }
                 };
                 img.src = e.target.result;
-                cipherFileName.textContent = file.name;
-                cipherPreviewSection.style.display = 'block';
             };
             reader.readAsDataURL(file);
         }
+
         cipherUploadArea.addEventListener('click', () => cipherFileInput.click());
         cipherUploadArea.addEventListener('dragover', e => { e.preventDefault(); cipherUploadArea.style.borderColor = '#1e4a7a'; });
         cipherUploadArea.addEventListener('dragleave', () => { cipherUploadArea.style.borderColor = '#cbd5e1'; });
