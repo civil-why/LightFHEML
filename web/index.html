@@ -443,49 +443,49 @@
         const trueLabelInput = document.getElementById('trueLabelInput');
         let cipherSelectedFile = null, cipherImageValid = false;
 
-        function handleCipherFile(file) {
-            // 支持 .ppm 文件，浏览器可能无法识别其 MIME 类型
-            const validExtensions = ['png', 'jpg', 'jpeg', 'ppm'];
-            const ext = file.name.split('.').pop().toLowerCase();
-            if (!validExtensions.includes(ext)) {
-                alert('请选择 PNG、JPG 或 PPM 图片文件');
-                return;
-            }
+        function resizeTo32x32(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 32;
+                    canvas.height = 32;
+                    const ctx = canvas.getContext('2d');
 
+                    // 居中裁剪：取正方形区域
+                    const size = Math.min(img.width, img.height);
+                    const sx = (img.width - size) / 2;
+                    const sy = (img.height - size) / 2;
+
+                    ctx.drawImage(img, sx, sy, size, size, 0, 0, 32, 32);
+                    canvas.toBlob(blob => {
+                        if (blob) resolve(blob);
+                        else reject(new Error('Canvas toBlob failed'));
+                    }, 'image/png');
+                };
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        function handleCipherFile(file) {
+            if (!file.type.startsWith('image/')) { alert('请选择图片文件'); return; }
             cipherSelectedFile = file;
             const reader = new FileReader();
             reader.onload = (e) => {
                 cipherPreviewImg.src = e.target.result;
-                cipherFileName.textContent = file.name;
-
-                if (ext === 'ppm') {
-                    // 浏览器不支持的格式，直接信任尺寸，跳过 Image 验证
-                    cipherFileDimension.textContent = '32 × 32 (PPM)';
-                    cipherSizeWarning.textContent = '';
+                const img = new Image();
+                img.onload = () => {
+                    // 显示原始尺寸，但不作为验证条件
+                    cipherFileDimension.textContent = `${img.width} × ${img.height} → 自动缩裁为 32×32`;
+                    cipherSizeWarning.textContent = '';   // 不再限制尺寸
                     cipherImageValid = true;
                     cipherComputeBtn.disabled = !isKeyReady;
                     cipherUploadArea.classList.add('disabled');
-                    cipherPreviewSection.style.display = 'block';
-                    return;
-                }
-
-                // 原有逻辑：通过 Image 验证其他格式
-                const img = new Image();
-                img.onload = () => {
-                    cipherFileDimension.textContent = `${img.width} × ${img.height}`;
-                    if (img.width === 32 && img.height === 32) {
-                        cipherSizeWarning.textContent = '';
-                        cipherImageValid = true;
-                        cipherComputeBtn.disabled = !isKeyReady;
-                        cipherUploadArea.classList.add('disabled');
-                    } else {
-                        cipherSizeWarning.textContent = '⚠️ 图片尺寸必须为 32×32';
-                        cipherImageValid = false;
-                        cipherComputeBtn.disabled = true;
-                        cipherUploadArea.classList.remove('disabled');
-                    }
                 };
                 img.src = e.target.result;
+                cipherFileName.textContent = file.name;
+                cipherPreviewSection.style.display = 'block';
             };
             reader.readAsDataURL(file);
         }
@@ -509,13 +509,30 @@
             trueLabelInput.value = '';
         });
         cipherComputeBtn.addEventListener('click', async () => {
-            if (!cipherSelectedFile || !cipherImageValid || !isKeyReady) { alert('请确保已上传32×32图片且密钥已就绪'); return; }
+            if (!cipherSelectedFile || !cipherImageValid || !isKeyReady) { 
+                alert('请确保已选择图片且密钥已就绪'); return; 
+            }
             cipherProgressBar.value = 0; cipherProgressPercent.textContent = '0%';
             cipherResultDiv.textContent = '正在执行密文计算 (预计 900 秒)...';
+
+            // 1. 将图片缩裁为 32x32 的 PNG Blob
+            let blob;
+            try {
+                blob = await resizeTo32x32(cipherSelectedFile);
+            } catch (err) {
+                cipherResultDiv.innerHTML = `<span style="color:#b45330;">图片处理失败: ${err.message}</span>`;
+                return;
+            }
+
+            // 2. 构造 FormData，文件名改为 .png
             const formData = new FormData();
-            formData.append('image', cipherSelectedFile);
+            formData.append('image', blob, 'resized_32.png');
             const trueLabel = trueLabelInput.value.trim();
-            if (trueLabel !== '' && !isNaN(parseInt(trueLabel))) formData.append('true_label', parseInt(trueLabel));
+            if (trueLabel !== '' && !isNaN(parseInt(trueLabel))) {
+                formData.append('true_label', parseInt(trueLabel));
+            }
+
+            // 3. 后续请求及进度模拟不变
             let timer = simulateProgress(900000, cipherProgressBar, cipherProgressPercent, null);
             try {
                 const res = await fetch('/cipher_for_one', { method: 'POST', body: formData });
