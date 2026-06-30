@@ -152,7 +152,7 @@
     <div id="panel-plain" class="panel active">
         <div class="card">
             <div class="card-title"><i class="fas fa-eye"></i> 明文图像推理</div>
-            <div class="upload-area" id="uploadArea"><i class="fas fa-cloud-upload-alt"></i><div class="hint">点击或拖拽上传图片</div><div class="spec">仅支持 PNG / JPG，尺寸 32×32</div></div>
+            <div class="upload-area" id="uploadArea"><i class="fas fa-cloud-upload-alt"></i><div class="hint">点击或拖拽上传图片</div><div class="spec">仅支持 PNG / JPG，任意尺寸图片，将自动缩裁为 32×32</div></div>
             <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg, image/x-portable-pixmap, .ppm" style="display:none;">
             <div id="previewSection" style="display: none;">
                 <div class="preview-container">
@@ -303,7 +303,7 @@
                         plainComputeBtn.disabled = false;
                         uploadArea.classList.add('disabled');
                     } else {
-                        sizeWarning.textContent = '⚠️ 图片尺寸必须为 32×32';
+                        sizeWarning.textContent = '';
                         imageValid = false;
                         plainComputeBtn.disabled = true;
                         uploadArea.classList.remove('disabled');
